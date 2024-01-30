@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>PDQ Test Page</title>
+		<style>
+			body {
+				font-family: Segoe UI, sans-serif;
+			}
+			.pdq__control {
+
+			}
+		</style>
+	</head>
+	<body>
+		<section class="pdq__select">
+			<h1>PDQ Native Javascript Test Page</h1>
+			<p>Select the image(s) you want to test, they will be run against the WASM version and the native code and compared. Output will not be exact due to differences in how the images are processed.</p>
+			<div class="pdq__control">
+				<label class="pdq__label">Select Image(s):</label>
+				<input class="pdq__input" type="file" id="pdq-files" value="" multiple="multiple" />
+			</div>
+		</section>
+		<section class="pdq__results" id="pdq-results">
+
+		</section>
+		<script src="scripts/pdq-wasm.js"></script>
+		<script src="scripts/hash-wasm.js"></script>
+		<script type="module">
+			import pdq from "../dist/pdq.js";
+			import wasm from "./scripts/binding.js";
+
+			function tableRow(table, tag, items) {
+				const row = document.createElement("tr");
+				items.forEach(item => {
+					const cell = document.createElement(tag);
+					if (Array.isArray(item)) {
+						item.forEach(value => {
+							const div = document.createElement("div");
+							div.textContent = value;
+							cell.appendChild(div);
+						});
+					} else {
+						cell.textContent = item;
+					}
+					row.appendChild(cell);
+				});
+				table.appendChild(row);
+			}
+
+			function hexToBinary(hexString) {
+				let binaryString = "";
+				for (let i = 0; i < hexString.length; i++) {
+					const binaryChar = parseInt(hexString[i], 16).toString(2);
+					binaryString += "0".repeat(4 - binaryChar.length) + binaryChar;
+				}
+				return binaryString;
+			}
+
+			function hammingDistance(str1, str2) {
+				const bin1 = hexToBinary(str1),
+					bin2 = hexToBinary(str2);
+				let distance = 0;
+				for (let i = 0; i < bin1.length; i++) {
+					if (bin1[i] !== bin2[i]) {
+						distance++;
+					}
+				}
+				return distance;
+			}
+
+			document.addEventListener("DOMContentLoaded", () => {
+
+				// create config
+				const config = {
+					resize: 512,
+					debug: false
+				};
+
+				// listen for the change event
+				const control = document.getElementById("pdq-files");
+				control.addEventListener("change", e => {
+
+					// track performance
+					const timing = [];
+					const images = [];
+					const proms = [];
+
+					// process files
+					let i = 0;
+					for (const file of control.files) {
+						if (file.type.includes("image/")) {
+							const prom = new Promise(success => {
+								timing[i] = performance.now();
+								const img = new Image();
+								img.onload = () => success(img);
+								img.src = URL.createObjectURL(file);
+								images[i] = img;
+							})
+
+								// resize image
+								.then(img => {
+									const canvas = document.createElement("canvas"),
+										context = canvas.getContext("2d");
+									canvas.imageSmoothingQuality = "high";
+									canvas.width = config.resize;
+									canvas.height = config.resize;
+									context.drawImage(img, 0, 0, img.width, img.height, 0, 0, config.resize, config.resize); // scale the image down
+									if (config.debug) {
+										document.body.appendChild(canvas);
+									}
+									return canvas;
+								})
+
+								// generate hashes
+								.then(canvas => pdq(canvas, config))
+
+								// save data
+								.then(hashes => {
+									const time = performance.now() - timing[i],
+										compare = performance.now();
+
+									// run the WASM version
+									return wasm(file).then(result => {
+
+										// return results
+										return {
+											time: time,
+											referencetime: performance.now() - compare,
+											file: file.name,
+											type: file.type,
+											img: images[i],
+											hashes: hashes,
+											reference: result,
+											distance: hammingDistance(result, hashes.hashes[0])
+										};
+									});
+								});
+
+							// add to the list of promises
+							proms.push(prom);
+						}
+					}
+
+					// render output table
+					Promise.all(proms).then(results => {
+						const heading = document.createElement("h1"),
+							table = document.createElement("table"),
+							nodes = [heading, table];
+						heading.text = "Results";
+
+						// add header row
+						tableRow(table, "th", ["File", "Type", "Size", "Hashes", "Quality", "Diff", "Speed"]);
+
+						// populate table
+						results.forEach(result => {
+							tableRow(table, "td", [
+								result.file,
+								result.type,
+								result.img.width + "x" + result.img.height,
+								["Reference: " + result.reference, "Javascript: " + result.hashes.hashes[0]],
+								result.hashes.quality,
+								result.distance + " / 256 (" + parseFloat(100 / 256 * result.distance).toFixed(3) + "%)",
+								[result.referencetime + "ms (Reference)", result.time + "ms (Javascript)", parseFloat(result.referencetime / result.time).toFixed(3) + "x"]
+							]);
+						});
+
+						// write the results
+						document.getElementById("pdq-results").replaceChildren(...nodes);
+					});
+				});
+			});
+		</script>
+	</body>
+</html>
