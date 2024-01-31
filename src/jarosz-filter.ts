@@ -1,6 +1,6 @@
 function boxBlurRows(
-    input: any,
-    output: any,
+    input: Uint8Array,
+    output: Uint8Array,
     width: number,
     height: number,
     radius: number

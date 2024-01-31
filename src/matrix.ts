@@ -1,5 +1,5 @@
 export default {
-    rotate: (data: any) => {
+    rotate: (data: Array<number>) => {
         const len = data.length,
             dim = Math.sqrt(len),
             rotated = Array(len);
@@ -10,10 +10,10 @@ export default {
         }
         return rotated;
     },
-    flip: (data: any) => {
+    flip: (data: Array<number>) => {
         const len = data.length,
             dim = Math.sqrt(len);
-        let flipped: Array<any> = [];
+        let flipped: Array<number> = [];
         for (let i = 0; i < dim; i++) {
             flipped = flipped.concat(
                 data.slice(i * dim, (i + 1) * dim).reverse()

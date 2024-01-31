@@ -1,5 +1,5 @@
 export default {
-    computeDct: (dct: Array<any>) => {
+    computeDct: (dct: Array<number>) => {
         // get the middle value
         const median = [...dct].sort((a, b) => a - b)[127];
 

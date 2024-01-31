@@ -118,7 +118,7 @@ export default (canvas: HTMLCanvasElement, config: any) => {
             })
 
             // compute hash from DCTs
-            .then((dcts: any) => {
+            .then((dcts: { [k: number]: number[] }) => {
                 const hashes: Array<string> = [];
 
                 // generate hashes
@@ -127,7 +127,7 @@ export default (canvas: HTMLCanvasElement, config: any) => {
                         hex = hash.toHex(result);
                     hashes.push(hex);
                 }
-                return { type: 'pdq', hashes: hashes, quality: q };
+                return { type: 'pdq', hashes, quality: q };
             })
     );
 };
