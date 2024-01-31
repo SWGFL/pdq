@@ -60,7 +60,7 @@ module.exports = function(grunt) {
 			},
 			gruntfile: {
 				files: ["gruntfile.js", "package.json"],
-				tasks: ["sass:dev", "postcss:dev", "rollup:es6"],
+				tasks: ["rollup"],
 				options: {atBegin: false}
 			}
 		}

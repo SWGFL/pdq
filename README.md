@@ -50,5 +50,7 @@ const prom = new Promise(success => {
 
 To build the code from source, run the following commands:
 
-`$ npm i`
-`$ grunt`
+```console
+$ npm i
+$ grunt
+```

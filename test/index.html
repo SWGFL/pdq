@@ -7,7 +7,60 @@
 				font-family: Segoe UI, sans-serif;
 			}
 			.pdq__control {
-
+				padding: 3px 0;
+				display: flex;
+				align-items: center;
+			}
+			.pdq__label {
+				flex: 0 0 25%;
+				box-sizing: border-box;
+				padding-right: 10px;
+				text-align: right;
+			}
+			.pdq__input {
+				border: 1px solid #000;
+				padding: 10px;
+			}
+			.pdq__submit {
+				background: #000;
+				padding: 10px;
+				color: #FFF;
+				font-weight: bold;
+				margin-left: 25%;
+				border: 0;
+				width: 40%;
+			}
+			.pdq__progress {
+				margin: 30px 0 0 25%;
+				display: flex;
+				gap: 10px;
+			}
+			.pdq__progress > progress {
+				flex: 0 0 40%;
+				height: 15px;
+				appearance: none;
+			}
+			table, thead, tbody, tr, td, th {
+				padding: 0;
+				border: 0;
+				margin: 0;
+				border-collapse: separate;
+				border-spacing: 0;
+				text-align: left;
+			}
+			table {
+				margin: 15px 0;
+				padding: 0;
+				width: 100%;
+			}
+			th, td {
+				padding: 5px;
+				border-bottom: 1px solid #AAA;
+			}
+			input, textarea, select, button {
+				font-family: inherit;
+				font-size: inherit;
+				line-height: inherit;
 			}
 		</style>
 	</head>
@@ -18,6 +71,17 @@
 			<div class="pdq__control">
 				<label class="pdq__label">Select Image(s):</label>
 				<input class="pdq__input" type="file" id="pdq-files" value="" multiple="multiple" />
+			</div>
+			<div class="pdq__control">
+				<label class="pdq__label">Compare to Reference:</label>
+				<input class="pdq__input" type="checkbox" id="pdq-compare" value="" />
+			</div>
+			<div class="pdq__control">
+				<label class="pdq__label">Debug:</label>
+				<input class="pdq__input" type="checkbox" id="pdq-debug" value="" />
+			</div>
+			<div class="pdq__control">
+				<input class="pdq__submit" type="submit" id="pdq-start" value="Generate Hashes" />
 			</div>
 		</section>
 		<section class="pdq__results" id="pdq-results">
@@ -70,15 +134,39 @@
 
 			document.addEventListener("DOMContentLoaded", () => {
 
-				// create config
-				const config = {
-					resize: 512,
-					debug: false
-				};
+				// listen for the click event
+				document.getElementById("pdq-start").addEventListener("click", e => {
+					const files = document.getElementById("pdq-files"),
+						compare = document.getElementById("pdq-compare").checked;
 
-				// listen for the change event
-				const control = document.getElementById("pdq-files");
-				control.addEventListener("change", e => {
+					// create config
+					const config = {
+						resize: 512,
+						debug: document.getElementById("pdq-debug").checked
+					};
+
+					// track progress
+					let pos = 0,
+						items = 0,
+						start = performance.now();
+					const wrap = document.createElement("div"),
+						bar = document.createElement("progress"),
+						progress = document.createElement("span"),
+						remain = document.createElement("div"),
+						update = () => {
+							pos++;
+							const percentage = (100 / items) * pos,
+								time = performance.now(),
+								elapsed = time - start;
+							remain.textContent = Math.round((((elapsed / pos) * items) - elapsed) / 1000) + " secs";
+							progress.textContent = Math.round(percentage) + "%";
+							bar.setAttribute("value", percentage);
+						};
+					bar.setAttribute("max", 100);
+					bar.setAttribute("value", 0);
+					progress.textContent = "0%";
+					wrap.classList.add("pdq__progress");
+					wrap.replaceChildren(bar, progress, remain);
 
 					// track performance
 					const timing = [];
@@ -87,7 +175,7 @@
 
 					// process files
 					let i = 0;
-					for (const file of control.files) {
+					for (const file of files.files) {
 						if (file.type.includes("image/")) {
 							const prom = new Promise(success => {
 								timing[i] = performance.now();
@@ -116,30 +204,40 @@
 
 								// save data
 								.then(hashes => {
-									const time = performance.now() - timing[i],
-										compare = performance.now();
+									const results = {
+										time: performance.now() - timing[i],
+										file: file.name,
+										type: file.type,
+										img: images[i],
+										hashes: hashes
+									};
 
-									// run the WASM version
-									return wasm(file).then(result => {
+									if (compare) {
+										const comparetime = performance.now();
 
-										// return results
-										return {
-											time: time,
-											referencetime: performance.now() - compare,
-											file: file.name,
-											type: file.type,
-											img: images[i],
-											hashes: hashes,
-											reference: result,
-											distance: hammingDistance(result, hashes.hashes[0])
-										};
-									});
+										// run the WASM version
+										return wasm(file).then(result => {
+											update();
+											return Object.assign(results, {
+												referencetime: performance.now() - comparetime,
+												reference: result,
+												distance: hammingDistance(result, hashes.hashes[0])
+											});
+										});
+									} else {
+										update();
+										return results;
+									}
 								});
 
 							// add to the list of promises
 							proms.push(prom);
+							items++;
 						}
 					}
+
+					// attach progress
+					document.getElementById("pdq-results").replaceChildren(wrap);
 
 					// render output table
 					Promise.all(proms).then(results => {
@@ -149,19 +247,34 @@
 						heading.text = "Results";
 
 						// add header row
-						tableRow(table, "th", ["File", "Type", "Size", "Hashes", "Quality", "Diff", "Speed"]);
+						tableRow(table, "th", [].concat(
+							["File", "Type", "Size", "Hashes", "Quality"],
+							compare ? ["Diff"] : [],
+							["Speed"]
+						));
 
 						// populate table
 						results.forEach(result => {
-							tableRow(table, "td", [
-								result.file,
-								result.type,
-								result.img.width + "x" + result.img.height,
-								["Reference: " + result.reference, "Javascript: " + result.hashes.hashes[0]],
-								result.hashes.quality,
-								result.distance + " / 256 (" + parseFloat(100 / 256 * result.distance).toFixed(3) + "%)",
-								[result.referencetime + "ms (Reference)", result.time + "ms (Javascript)", parseFloat(result.referencetime / result.time).toFixed(3) + "x"]
-							]);
+							tableRow(table, "td", [].concat(
+								[
+									result.file,
+									result.type,
+									result.img.width + "x" + result.img.height,
+									[].concat(
+										compare ? ["Reference: " + result.reference] : [],
+										[(compare ? "Javascript: " : "") + result.hashes.hashes[0]]
+									),
+									result.hashes.quality
+								],
+								compare ? [result.distance + " / 256 (" + parseFloat(100 / 256 * result.distance).toFixed(3) + "%)"] : [],
+								[
+									[].concat(
+										compare ? [result.referencetime + "ms (Reference)"] : [],
+										[result.time + "ms" + (compare ? " (Javascript)" : "")],
+										compare ? [parseFloat(result.referencetime / result.time).toFixed(3) + "x"] : []
+									)
+								]
+							));
 						});
 
 						// write the results

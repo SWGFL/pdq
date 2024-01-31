@@ -31,7 +31,7 @@ export default (canvas, config) => {
 			document.body.appendChild(canvas);
 		}
 		
-		// Return the luminance data.
+		// Return the image data.
 		success(canvas.getContext("2d").getImageData(0, 0, width, height).data);
 	})
 
@@ -80,7 +80,6 @@ export default (canvas, config) => {
 		
 		// generate 2D descrete cosine transform
 		.then(data => {
-
 			const buffer16x16 = dct(data);
 			
 			// debug
