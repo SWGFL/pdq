@@ -203,13 +203,13 @@
 								.then(canvas => pdq(canvas, config))
 
 								// save data
-								.then(hashes => {
+								.then(hash => {
 									const results = {
 										time: performance.now() - timing[i],
 										file: file.name,
 										type: file.type,
 										img: images[i],
-										hashes: hashes
+										hash: hash
 									};
 
 									if (compare) {
@@ -221,7 +221,7 @@
 											return Object.assign(results, {
 												referencetime: performance.now() - comparetime,
 												reference: result,
-												distance: hammingDistance(result, hashes.hashes[0])
+												distance: hammingDistance(result, hash.hash)
 											});
 										});
 									} else {
@@ -253,6 +253,11 @@
 							["Speed"]
 						));
 
+						// calculate totals
+						let diff = 0,
+							reftime = 0,
+							hashtime = 0;
+
 						// populate table
 						results.forEach(result => {
 							tableRow(table, "td", [].concat(
@@ -262,9 +267,9 @@
 									result.img.width + "x" + result.img.height,
 									[].concat(
 										compare ? ["Reference: " + result.reference] : [],
-										[(compare ? "Javascript: " : "") + result.hashes.hashes[0]]
+										[(compare ? "Javascript: " : "") + result.hash.hash]
 									),
-									result.hashes.quality
+									result.hash.quality
 								],
 								compare ? [result.distance + " / 256 (" + parseFloat(100 / 256 * result.distance).toFixed(3) + "%)"] : [],
 								[
@@ -275,7 +280,27 @@
 									)
 								]
 							));
+
+							// calculate totals
+							if (compare) {
+								diff += result.distance;
+								reftime += result.referencetime;
+							}
+							hashtime += result.time;
 						});
+
+						// write totals
+						tableRow(table, "td", [].concat(
+							["", "", "", "", ""],
+							compare ? [diff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * diff).toFixed(3) + "%)"] : [],
+							[
+								[].concat(
+									compare ? [reftime + "ms (Reference)"] : [],
+									[hashtime + "ms" + (compare ? " (Javascript)" : "")],
+									compare ? [parseFloat(reftime / hashtime).toFixed(3) + "x"] : []
+								)
+							]
+						));
 
 						// write the results
 						document.getElementById("pdq-results").replaceChildren(...nodes);

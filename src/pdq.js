@@ -13,7 +13,8 @@ export default (canvas, config) => {
 	config = Object.assign({
 		debug: false,
 		passes: 2,
-		block: 64
+		block: 64,
+		transform: false // whether to generate dihedral transformation hashes
 	}, config);
 
 	// assign varables
@@ -78,7 +79,7 @@ export default (canvas, config) => {
 			return data;
 		})
 		
-		// generate 2D descrete cosine transform
+		// generate 2D discrete cosine transform
 		.then(data => {
 			const buffer16x16 = dct(data);
 			
@@ -91,16 +92,16 @@ export default (canvas, config) => {
 		
 		// rotate and flip DCTs
 		.then(buffer => {
-			const dcts = {
-				original: buffer,
-				rot90: matrix.rotate(buffer),
-				flip: matrix.flip(buffer)
-			};
-			dcts.rot180 = matrix.rotate(dcts.rot90);
-			dcts.rot270 = matrix.rotate(dcts.rot180);
-			dcts.fliprot90 = matrix.rotate(dcts.flip);
-			dcts.fliprot180 = matrix.rotate(dcts.fliprot90);
-			dcts.fliprot270 = matrix.rotate(dcts.fliprot180);
+			const dcts = {original: buffer};
+			if (config.transform) {
+				dcts.rot90 = matrix.rotate(buffer);
+				dcts.flip = matrix.flip(buffer);
+				dcts.rot180 = matrix.rotate(dcts.rot90);
+				dcts.rot270 = matrix.rotate(dcts.rot180);
+				dcts.fliprot90 = matrix.rotate(dcts.flip);
+				dcts.fliprot180 = matrix.rotate(dcts.fliprot90);
+				dcts.fliprot270 = matrix.rotate(dcts.fliprot180);
+			}
 
 			// debug
 			if (debug) {
@@ -119,6 +120,6 @@ export default (canvas, config) => {
 					hex = hash.toHex(result);
 				hashes.push(hex);
 			}
-			return {type: "pdq", hashes: hashes, quality: q};
+			return {type: "pdq", hash: config.transform ? hashes : hashes[0], quality: q};
 		});
 };

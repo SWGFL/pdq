@@ -28,7 +28,7 @@ function boxBlurRows(input, output, width, height, radius) {
 		}
 		
 		// average out the last {radius} pixels
-        for (let j = width - radius; j < width; j++) {
+        for (let j = 0; j < radius; j++) {
 			val += lv - input[li++];
 			output[ti++] = Math.round(val * iarr);
 		}
@@ -70,7 +70,7 @@ function boxBlurColumns(input, output, width, height, radius) {
 		}
 		
 		// average out the last {radius} pixels
-        for (let j = height - radius; j < height; j++) {
+        for (let j = 0; j < radius; j++) {
 			val += lv - input[li];
 			output[ti] = Math.round(val * iarr);
 			li += width;
@@ -78,8 +78,6 @@ function boxBlurColumns(input, output, width, height, radius) {
 		}
     }
 }
-
-const block = 128; // how many pixels to divide the blocks into
 
 export default (data, width, height, passes) => {
 
@@ -90,7 +88,8 @@ export default (data, width, height, passes) => {
 	}
 
 	// apply the filter
-	const winx = Math.round(width / block / passes),
+	const block = 128, // how many pixels to divide the blocks into
+		winx = Math.round(width / block / passes),
 		winy = Math.round(width / block / passes);
 	for (let i = 0; i < passes; i++) {
 		boxBlurRows(data, output, width, height, winx);
