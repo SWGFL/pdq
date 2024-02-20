@@ -1,5 +1,7 @@
 export default (block, data) => {
 	let gradient = 0;
+
+	// diff left to right
 	for (let i = 0; i < block - 1; i++) {
 		for (let j = 0; j < block; j++) {
 			const u = data[(i * block) + j],
@@ -8,6 +10,8 @@ export default (block, data) => {
 			gradient += parseInt(Math.abs(d));
 		}
 	}
+
+	// diff top to bottom
 	for (let i = 0; i < block; i++) {
 		for (let j = 0; j < block - 1; j++) {
 			const u = data[(i * block) + j],
