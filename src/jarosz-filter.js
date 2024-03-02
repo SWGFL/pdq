@@ -1,9 +1,9 @@
 function boxBlurRows(input, output, width, height, radius) {
-    const iarr = 1 / (radius + radius + 1); // convolution matrix value - constant for box blur
+	const iarr = 1 / (radius + radius + 1); // convolution matrix value - constant for box blur
 
 	// loop through each row
-    for (let i = 0; i < height; i++) {
-        let ti = i * width,
+	for (let i = 0; i < height; i++) {
+		let ti = i * width,
 			li = ti,
 			ri = ti + radius,
 			fv = input[ti],
@@ -11,36 +11,36 @@ function boxBlurRows(input, output, width, height, radius) {
 			val = (radius + 1) * fv;
 
 		// add up from the left to the radius - reflecting the missing data
-        for (let j = 0; j < radius; j++) {
+		for (let j = 0; j < radius; j++) {
 			val += input[ti + j];
 		}
 
 		// average the radius of pixels
-        for (let j = 0; j <= radius; j++) {
+		for (let j = 0; j <= radius; j++) {
 			val += input[ri++] - fv;
-			output[ti++] = Math.round(val * iarr);
+			output[ti++] = val * iarr;
 		}
 		
 		// take a floating average from {radius} to {width - radius}
-        for (let j = radius + 1; j < width - radius; j++) {
+		for (let j = radius + 1; j < width - radius; j++) {
 			val += input[ri++] - input[li++];
-			output[ti++] = Math.round(val * iarr);
+			output[ti++] = val * iarr;
 		}
 		
 		// average out the last {radius} pixels
-        for (let j = 0; j < radius; j++) {
+		for (let j = 0; j < radius; j++) {
 			val += lv - input[li++];
-			output[ti++] = Math.round(val * iarr);
+			output[ti++] = val * iarr;
 		}
     }
 }
 
 function boxBlurColumns(input, output, width, height, radius) {
-    const iarr = 1 / (radius + radius + 1); // convolution matrix value - constant for box blur
+	const iarr = 1 / (radius + radius + 1); // convolution matrix value - constant for box blur
 
 	// loop through each column
-    for (let i = 0; i < width; i++) {
-        let ti = i,
+	for (let i = 0; i < width; i++) {
+		let ti = i,
 			li = ti,
 			ri = ti + radius * width,
 			fv = input[ti],
@@ -48,42 +48,42 @@ function boxBlurColumns(input, output, width, height, radius) {
 			val = (radius + 1) * fv;
 
 		// add up from the top to the radius - reflecting the missing data
-        for (let j = 0; j < radius; j++) {
+		for (let j = 0; j < radius; j++) {
 			val += input[ti + j * width];
 		}
 
 		// average the radius of pixels
-        for (let j = 0; j <= radius; j++) {
+		for (let j = 0; j <= radius; j++) {
 			val += input[ri] - fv;
-			output[ti] = Math.round(val * iarr);
+			output[ti] = val * iarr;
 			ri += width;
 			ti += width;
 		}
 		
 		// take a floating average from {radius} to {height - radius}
-        for (let j = radius + 1; j < height - radius; j++) {
+		for (let j = radius + 1; j < height - radius; j++) {
 			val += input[ri] - input[li];
-			output[ti] = Math.round(val * iarr);
+			output[ti] = val * iarr;
 			li += width;
 			ri += width;
 			ti += width;
 		}
 		
 		// average out the last {radius} pixels
-        for (let j = 0; j < radius; j++) {
+		for (let j = 0; j < radius; j++) {
 			val += lv - input[li];
-			output[ti] = Math.round(val * iarr);
+			output[ti] = val * iarr;
 			li += width;
 			ti += width;
 		}
-    }
+	}
 }
 
 export default (data, width, height, passes) => {
 
 	// copy data to temp array
-	const output = new Uint8Array(data.length);
-    for (var i = 0; i < data.length; i++) {
+	const output = Array(data.length);
+	for (var i = 0; i < data.length; i++) {
 		output[i] = data[i];
 	}
 

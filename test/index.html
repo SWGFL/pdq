@@ -182,7 +182,6 @@
 								const img = new Image();
 								img.onload = () => success(img);
 								img.src = URL.createObjectURL(file);
-								images[i] = img;
 							})
 
 								// resize image
@@ -190,9 +189,10 @@
 									const canvas = document.createElement("canvas"),
 										context = canvas.getContext("2d");
 									canvas.imageSmoothingQuality = "high";
-									canvas.width = config.resize;
-									canvas.height = config.resize;
-									context.drawImage(img, 0, 0, img.width, img.height, 0, 0, config.resize, config.resize); // scale the image down
+									canvas.width = Math.min(img.width, img.height, config.resize);
+									canvas.height = Math.min(img.width, img.height, config.resize);
+									context.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height); // scale the image down
+									images[i] = img;
 									if (config.debug) {
 										document.body.appendChild(canvas);
 									}
