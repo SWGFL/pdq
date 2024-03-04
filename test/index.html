@@ -170,18 +170,21 @@
 
 					// track performance
 					const timing = [];
-					const images = [];
 					const proms = [];
 
 					// process files
 					let i = 0;
 					for (const file of files.files) {
 						if (file.type.includes("image/")) {
+							let width, height, timing = performance.now(), url;
 							const prom = new Promise(success => {
-								timing[i] = performance.now();
 								const img = new Image();
-								img.onload = () => success(img);
-								img.src = URL.createObjectURL(file);
+								img.onload = () => {
+									URL.revokeObjectURL(url);
+									success(img);
+								};
+								url = URL.createObjectURL(file);
+								img.src = url;
 							})
 
 								// resize image
@@ -192,7 +195,8 @@
 									canvas.width = Math.min(img.width, img.height, config.resize);
 									canvas.height = Math.min(img.width, img.height, config.resize);
 									context.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height); // scale the image down
-									images[i] = img;
+									width = img.width;
+									height = img.height;
 									if (config.debug) {
 										document.body.appendChild(canvas);
 									}
@@ -205,10 +209,11 @@
 								// save data
 								.then(hash => {
 									const results = {
-										time: performance.now() - timing[i],
+										time: performance.now() - timing,
 										file: file.name,
 										type: file.type,
-										img: images[i],
+										width: width,
+										height: height,
 										hash: hash
 									};
 
@@ -264,7 +269,7 @@
 								[
 									result.file,
 									result.type,
-									result.img.width + "x" + result.img.height,
+									result.width + "x" + result.height,
 									[].concat(
 										compare ? ["Reference: " + result.reference] : [],
 										[(compare ? "Javascript: " : "") + result.hash.hash]
