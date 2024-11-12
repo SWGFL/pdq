@@ -1,5 +1,5 @@
 import jarosz from "./jarosz-filter.js";
-import render from "./render.js";
+import render, {renderHash} from "./render.js";
 import matrix from "./matrix.js";
 import hash from "./hash-dct.js";
 import luminance from "./luminance.js";
@@ -119,6 +119,11 @@ export default (canvas, config) => {
 				const result = hash.computeDct(dcts[item]),
 					hex = hash.toHex(result);
 				hashes.push(hex);
+
+				// debug
+				if (debug) {
+					renderHash(result);
+				}
 			}
 			return {type: "pdq", hash: config.transform ? hashes : hashes[0], quality: q};
 		});
