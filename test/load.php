@@ -21,8 +21,10 @@ function hex2binCustom(string $hex) : string {
 	return \implode('', $bin);
 }
 
-$file = dirname(dirname(__DIR__)).'/stopncii-new/workspace/pdq/80019.JPG';
-$compare = 'fad8639fe66200e1286111e736f205c5bf113dc77f8bfb01d103e2b9a214767c';
+$file = 'images/1.JPG';
+$compare = '76b2922be5c644aa3d6950d663aeb5e9ca444c129e39b5b4f18f61a53f2a8e51';
+// $file = dirname(dirname(__DIR__)).'/stopncii-new/workspace/pdq/80019.JPG';
+// $compare = 'fad8639fe66200e1286111e736f205c5bf113dc77f8bfb01d103e2b9a214767c';
 // $file = dirname(dirname(__DIR__)).'/swgfl/httpdocs/assets/articles/images/infographic-2-original.jpg';
 // $compare = '06d80acdf2817912dbb9cb6c0dac6c035046f389d3fc377e545283ee5d23f453';
 $show_timings = false;
