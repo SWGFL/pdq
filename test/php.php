@@ -1,7 +1,43 @@
 <?php
-
+declare(strict_types=1);
 require dirname(__DIR__) . '/src/pdq.php';
 require __DIR__.'/scripts/pdq.php';
+
+if (!empty($_FILES['file'])) {
+	$reference = !empty($_POST['reference']);
+	$file = $_FILES['file']['tmp_name'];
+	$mime = \mime_content_type($file);
+	if (\str_starts_with($mime, 'image/')) {
+		$time = \microtime(true);
+		$data = [
+			'type' => 'pdq',
+			'hash' => null,
+			'quality' => null
+		];
+
+		// reference
+		if (!empty($_POST['reference'])) {
+			list($hash, $data['quality']) = \PDQHasher::computeHashAndQualityFromFilename($file, false, false, true);
+			$data['hash'] = $hash->toHexString();
+
+		// our version
+		} else {
+			$pdq = new \swgfl\pdq\pdq();
+			if (($result = $pdq->run($file)) !== false) {
+				$data = \array_merge($data, $result);
+			}
+		}
+
+		// add timing
+		$data['time'] = \microtime(true) - $time;
+
+		// return JSON
+		\header('Content-Type: application/json');
+		exit(\json_encode($data));
+	}
+}
+\http_response_code(400);
+exit;
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 

@@ -77,6 +77,10 @@
 				<input class="pdq__input" type="checkbox" id="pdq-compare" value="" />
 			</div>
 			<div class="pdq__control">
+				<label class="pdq__label">Compare to PHP:</label>
+				<input class="pdq__input" type="checkbox" id="pdq-php" value="" />
+			</div>
+			<div class="pdq__control">
 				<label class="pdq__label">Debug:</label>
 				<input class="pdq__input" type="checkbox" id="pdq-debug" value="" />
 			</div>
@@ -132,12 +136,24 @@
 				return distance;
 			}
 
+			function php(file, reference = false) {
+				const data = new FormData();
+				data.append("file", file);
+				data.append("reference", reference ? 1 : 0);
+				return fetch("php.php", {
+					method: "POST",
+					body: data
+				})
+					.then(response => response.json());
+			}
+
 			document.addEventListener("DOMContentLoaded", () => {
 
 				// listen for the click event
 				document.getElementById("pdq-start").addEventListener("click", e => {
 					const files = document.getElementById("pdq-files"),
-						compare = document.getElementById("pdq-compare").checked;
+						compare = document.getElementById("pdq-compare").checked,
+						comparephp = document.getElementById("pdq-php").checked;
 
 					// create config
 					const config = {
@@ -208,7 +224,7 @@
 
 								// save data
 								.then(hash => {
-									const results = {
+									return {
 										time: performance.now() - timing,
 										file: file.name,
 										type: file.type,
@@ -216,23 +232,58 @@
 										height: height,
 										hash: hash
 									};
+								})
 
+								// compare
+								.then(results => {
 									if (compare) {
 										const comparetime = performance.now();
 
 										// run the WASM version
 										return wasm(file).then(result => {
-											update();
 											return Object.assign(results, {
 												referencetime: performance.now() - comparetime,
 												reference: result,
-												distance: hammingDistance(result, hash.hash)
+												distance: hammingDistance(result, results.hash.hash)
 											});
 										});
-									} else {
-										update();
-										return results;
 									}
+									return results;
+								})
+
+								// PHP
+								.then(results => {
+									if (comparephp) {
+										const comparetime = performance.now();
+										return php(file).then(result => {
+											return Object.assign(results, {
+												phptime: performance.now() - comparetime,
+												php: result,
+												phpdistance: hammingDistance(result.hash, results.reference || results.hash.hash)
+											});
+										});
+									}
+									return results;
+								})
+
+								// PHP reference
+								.then(results => {
+									if (comparephp && compare) {
+										const comparetime = performance.now();
+										return php(file, true).then(result => {
+											return Object.assign(results, {
+												phpcomparetime: performance.now() - comparetime,
+												phpcompare: result,
+												phpcomparedistance: hammingDistance(result.hash, results.reference)
+											});
+										});
+									}
+									return results;
+								})
+								
+								.then(results => {
+									update();
+									return results;
 								});
 
 							// add to the list of promises
@@ -254,14 +305,18 @@
 						// add header row
 						tableRow(table, "th", [].concat(
 							["File", "Type", "Size", "Hashes", "Quality"],
-							compare ? ["Diff"] : [],
+							compare || comparephp ? ["Diff"] : [],
 							["Speed"]
 						));
 
 						// calculate totals
 						let diff = 0,
+							phpdiff = 0,
+							phprefdiff = 0,
 							reftime = 0,
-							hashtime = 0;
+							hashtime = 0,
+							phptime = 0,
+							phpreftime = 0;
 
 						// populate table
 						results.forEach(result => {
@@ -272,16 +327,25 @@
 									result.width + "x" + result.height,
 									[].concat(
 										compare ? ["Reference: " + result.reference] : [],
-										[(compare ? "Javascript: " : "") + result.hash.hash]
+										[(compare || comparephp ? "Javascript: " : "") + result.hash.hash],
+										comparephp ? ["PHP: " + result.php.hash] : [],
+										comparephp && compare ? ["PHP Reference: " + result.phpcompare.hash] : []
 									),
 									result.hash.quality
 								],
-								compare ? [result.distance + " / 256 (" + parseFloat(100 / 256 * result.distance).toFixed(3) + "%)"] : [],
+								[
+									[].concat(
+										compare ? [result.distance + " / 256 (" + parseFloat(100 / 256 * result.distance).toFixed(3) + "%) (Javascript/Ref)"] : [],
+										comparephp ? [result.phpdistance + " / 256 (" + parseFloat(100 / 256 * result.phpdistance).toFixed(3) + "%) (PHP/Ref)"] : [],
+										comparephp && compare ? [result.phpcomparedistance + " / 256 (" + parseFloat(100 / 256 * result.phpcomparedistance).toFixed(3) + "%) (PHP Ref/Ref)"] : []
+									)
+								],
 								[
 									[].concat(
 										compare ? [result.referencetime + "ms (Reference)"] : [],
-										[result.time + "ms" + (compare ? " (Javascript)" : "")],
-										compare ? [parseFloat(result.referencetime / result.time).toFixed(3) + "x"] : []
+										[result.time + "ms" + (compare ? " (Javascript, " + parseFloat(result.referencetime / result.time).toFixed(3) + "x" + ")" : "")],
+										comparephp ? [result.phptime + "ms" + (comparephp ? " (PHP, " + parseFloat(result.time / result.referencetime).toFixed(3) + "x" + ")" : "")] : [],
+										comparephp && compare ? [result.phpcomparetime + "ms (PHP Ref, " + parseFloat(result.phpcomparetime / result.referencetime).toFixed(3) + "x" + ")"] : []
 									)
 								]
 							));
@@ -291,21 +355,42 @@
 								diff += result.distance;
 								reftime += result.referencetime;
 							}
+							if (comparephp) {
+								phpdiff += result.phpdistance;
+								phptime += result.phptime;
+							}
+							if (comparephp && compare) {
+								phprefdiff += result.phpcomparedistance;
+								phpreftime += result.phpcomparetime;
+							}
 							hashtime += result.time;
 						});
 
 						// write totals
 						tableRow(table, "td", [].concat(
 							["", "", "", "", ""],
-							compare ? [diff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * diff).toFixed(3) + "%)"] : [],
+							[
+								[].concat(
+									compare ? [diff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * diff).toFixed(3) + "%) (Javascript/Ref)"] : [],
+									comparephp ? [phpdiff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * phpdiff).toFixed(3) + "%) (PHP/Ref)"] : [],
+									comparephp && compare ? [phprefdiff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * phprefdiff).toFixed(3) + "%) (PHP Ref/Ref)"] : [],
+								)
+							]
 							[
 								[].concat(
 									compare ? [reftime + "ms (Reference)"] : [],
-									[hashtime + "ms" + (compare ? " (Javascript)" : "")],
-									compare ? [parseFloat(reftime / hashtime).toFixed(3) + "x"] : []
+									[hashtime + "ms" + (compare || comparephp ? " (Javascript)" : "")],
+									comparephp ? [phptime + "ms (PHP)"] : [],
+									comparephp && compare ? [phpreftime + "ms (PHP Reference)"] : [],
 								)
 							]
 						));
+
+						console.log([].concat(
+									compare ? [diff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * diff).toFixed(3) + "%) (Javascript/Ref)"] : [],
+									comparephp ? [phpdiff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * phpdiff).toFixed(3) + "%) (PHP/Ref)"] : [],
+									comparephp && compare ? [phprefdiff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * phprefdiff).toFixed(3) + "%) (PHP Ref/Ref)"] : [],
+								));
 
 						// write the results
 						document.getElementById("pdq-results").replaceChildren(...nodes);

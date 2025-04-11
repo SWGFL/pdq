@@ -82,10 +82,7 @@ function boxBlurColumns(input, output, width, height, radius) {
 export default (data, width, height, passes) => {
 
 	// copy data to temp array
-	const output = Array(data.length);
-	for (var i = 0; i < data.length; i++) {
-		output[i] = data[i];
-	}
+	const output = Array(data.length).fill(0);
 
 	// apply the filter
 	const block = 128, // how many pixels to divide the blocks into
