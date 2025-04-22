@@ -361,6 +361,8 @@ class PDQHasher {
       self::boxAlongCols($other_matrix, $luma_matrix, $num_rows, $num_cols, $window_size_along_cols);
     }
 
+	return $other_matrix;
+
   }
 
   // ================================================================
@@ -666,6 +668,7 @@ protected static function renderLuminance(array $data) {
     /*bool*/ $show_timings,
     /*bool*/ $dump
   ) {
+	$steps = [];
     $num_rows = imagesy($image);
     $num_cols = imagesx($image);
     if ($dump) {
@@ -678,6 +681,7 @@ protected static function renderLuminance(array $data) {
     $t1 = microtime(true);
     $luma_matrix = self::imageToLumaMatrix($image, $num_rows, $num_cols);
 	// self::renderLuminance($luma_matrix);
+	$steps['luminance'] = $luma_matrix;
 	
     $t2 = microtime(true);
     if ($show_timings) {
@@ -690,7 +694,7 @@ protected static function renderLuminance(array $data) {
     $window_size_along_rows = self::computeJaroszFilterWindowSize($num_cols);
     $window_size_along_cols = self::computeJaroszFilterWindowSize($num_rows);
 	// $copy = $luma_matrix;
-    self::jaroszFilter($luma_matrix, $num_rows, $num_cols, $window_size_along_rows, $window_size_along_cols);
+    $steps['jaroszFilter'] = self::jaroszFilter($luma_matrix, $num_rows, $num_cols, $window_size_along_rows, $window_size_along_cols);
 	// $diff = 0;
 	// foreach ($copy AS $row => $cols) {
 	// 	foreach ($cols AS $col => $value) {
@@ -730,6 +734,8 @@ protected static function renderLuminance(array $data) {
     if ($show_timings) {
       printf("X030-DSMP %.6f\n", $t2-$t1);
     }
+
+	$steps['64x64'] = $buffer_64x64;
 
     //  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     // Quality metric.  Reuse the 64x64 image-domain downsample
@@ -804,7 +810,7 @@ protected static function renderLuminance(array $data) {
       print_r($buffer_16x16);
     }
 
-    return array($buffer_16x16, $quality);
+    return array($buffer_16x16, $quality, $steps);
   }
 
   // ----------------------------------------------------------------
@@ -814,11 +820,14 @@ protected static function renderLuminance(array $data) {
     /*bool*/ $dump
   ) {
     $t01 = microtime(true);
+	$steps = [];
 
     //  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    list ($buffer_16x16, $quality) = self:: computeDCTAndQualityFromImage(
+    list ($buffer_16x16, $quality, $steps) = self:: computeDCTAndQualityFromImage(
       $image, $show_timings, $dump
     );
+	
+	$steps['dct'] = $buffer_16x16;
 
     //  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     $hash = self::computeHashFromDCTOutput($buffer_16x16);
@@ -830,7 +839,7 @@ protected static function renderLuminance(array $data) {
       printf("X999-OVRL %.6f\n", $t02-$t01);
     }
     //  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    return array($hash, $quality);
+    return array($hash, $quality, $steps);
   }
 
   // ----------------------------------------------------------------

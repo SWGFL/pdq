@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-require dirname(__DIR__) . '/src/pdq.php';
+require \dirname(__DIR__) . '/src/pdq.php';
 require __DIR__.'/scripts/pdq.php';
 
 if (!empty($_FILES['file'])) {
@@ -12,12 +12,13 @@ if (!empty($_FILES['file'])) {
 		$data = [
 			'type' => 'pdq',
 			'hash' => null,
-			'quality' => null
+			'quality' => null,
+			'steps' => null
 		];
 
 		// reference
 		if (!empty($_POST['reference'])) {
-			list($hash, $data['quality']) = \PDQHasher::computeHashAndQualityFromFilename($file, false, false, true);
+			list($hash, $data['quality'], $data['steps']) = \PDQHasher::computeHashAndQualityFromFilename($file, false, false, true);
 			$data['hash'] = $hash->toHexString();
 
 		// our version

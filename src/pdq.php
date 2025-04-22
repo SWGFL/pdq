@@ -14,8 +14,11 @@ class pdq {
 		'transform' => false
 	];
 
+	protected array $steps = [];
+
 	public function __construct(array $config = []) {
 		$this->config = \array_merge($this->config, $config);
+		$this->steps = [];
 	}
 
 	/**
@@ -85,7 +88,8 @@ class pdq {
 				$output[] = [
 					'type' => 'pdq',
 					'hash' => $hashes,
-					'quality' => $quality
+					'quality' => $quality,
+					'steps' => $this->steps
 				];
 			}
 		}
@@ -187,6 +191,7 @@ class pdq {
 		if ($this->config['debug']) {
 			$this->renderData($data['data'], $data['width'], $data['height']);
 		}
+		$this->steps['luminance'] = $data['data'];
 		return $data;
 	}
 	
@@ -226,6 +231,7 @@ class pdq {
 		if ($this->config['debug']) {
 			$this->renderData($output, $width, $height);
 		}
+		$this->steps['jaroszFilter'] = $output;
 		return $output;
 	}
 	
@@ -332,6 +338,7 @@ class pdq {
 		if ($this->config['debug']) {
 			$this->renderData($scaled, $block, $block);
 		}
+		$this->steps['64x64'] = $scaled;
 		return $scaled;
 	}
 	
@@ -402,7 +409,7 @@ class pdq {
 				$buffer16x16[$i * 16 + $j] = $sumk;
 			}
 		}
-		
+		$this->steps['dct'] = $buffer16x16;
 		return $buffer16x16;
 	}
 	
