@@ -99,6 +99,9 @@ class pdq {
 	
 	/**
 	 * Load an image from a file
+	 * 
+	 * @param string $file the file path of the image
+	 * @return GdImage|false the image as a GdImage object, or false if there's an error
 	 */
 	protected function loadImageFromFile(string $file) : \GdImage|false {
 		$type = \mime_content_type($file);
@@ -148,6 +151,12 @@ class pdq {
 		return false;
 	}
 
+	/**
+	 * Echoes an image onto the page
+	 * 
+	 * @param GdImage $image the image to render as a GdImage object
+	 * @return void
+	 */
 	protected function render(\GdImage $image, ?string &$error = null) : void {
 		if (($handle = \fopen('php://memory', 'w')) === false) {
 			$error = "Couldn't create image stream";
@@ -165,6 +174,9 @@ class pdq {
 	
 	/**
 	 * Convert RGBA image data to luminance (grayscale)
+	 * 
+	 * @param GdImage $image the image to convert
+	 * @return array|false the luma matrix as an array, or false if there's an error
 	 */
 	protected function luminance(\GdImage $image) : array|false {
 		$luma = [
@@ -206,6 +218,11 @@ class pdq {
 	
 	/**
 	 * Render luminance data as an image
+	 * 
+	 * @param array $data the luma matrix array
+	 * @param int $width the width to render the image at
+	 * @param int $height the height to render the image at
+	 * @return void
 	 */
 	protected function renderLuminance(array $data, int $width, int $height) : void {
 		$image = \imagecreatetruecolor($width, $height);
@@ -224,6 +241,11 @@ class pdq {
 	/**
 	 * Apply Jarosz box blur filter using original implementation approach
 	 * This uses the 2D matrix approach from the original implementation
+	 * 
+	 * @param array $lumaMatrix the array of luma data
+	 * @param int $width the width of the image
+	 * @param int $height the height of the image
+	 * @return array|false the blurred image as array data, or false if there's an error
 	 */
 	protected function jaroszFilter(array $lumaMatrix, int $width, int $height) : array|false {
 		// Calculate window sizes based on divisor
@@ -256,6 +278,9 @@ class pdq {
 	
 	/**
 	 * Calculate Jarosz filter window size
+	 * 
+	 * @param int $dimension the dimension of the original image
+	 * @return int the size
 	 */
 	protected function computeJaroszFilterWindowSize(int $dimension) : int {
 		return \intval(($dimension + $this->config['divisor'] - 1) / $this->config['divisor']);
@@ -263,7 +288,13 @@ class pdq {
 	
 	/**
 	 * Apply box blur along rows
-	 * Following the original implementation closely
+	 * 
+	 * @param array $inImage the array data of the input
+	 * @param array $outImage the array data of the output
+	 * @param int $numRows the number of rows to parse
+	 * @param int $numCols the number of columns to parse
+	 * @param int $windowSize the size of the window
+	 * @return void
 	 */
 	protected function boxAlongRows(array &$inImage, array &$outImage, int $numRows, int $numCols, int $windowSize) : void {
 		for ($i = 0; $i < $numRows; $i++) {
@@ -320,7 +351,13 @@ class pdq {
 	
 	/**
 	 * Apply box blur along columns
-	 * Following the original implementation closely
+	 * 
+	 * @param array $inImage the array data of the input
+	 * @param array $outImage the array data of the output
+	 * @param int $numRows the number of rows to parse
+	 * @param int $numCols the number of columns to parse
+	 * @param int $windowSize the size of the window
+	 * @return void
 	 */
 	protected function boxAlongCols(array &$inImage, array &$outImage, int $numRows, int $numCols, int $windowSize) : void {
 		for ($j = 0; $j < $numCols; $j++) {
@@ -377,7 +414,12 @@ class pdq {
 	
 	/**
 	 * Rescale image data to specific block size
-	 * Using 2D arrays now to match the format from the Jarosz filter
+	 * 
+	 * @param array $lumaMatrix the luma matrix array data
+	 * @param int $width the width to scale to
+	 * @param int $height the height to scale to
+	 * @param int $block the block size
+	 * @return array|false the rescaled image data as an array, or false if there's an error
 	 */
 	protected function rescale(array $lumaMatrix, int $width, int $height, int $block) : array|false {
 		// Create a 1D array for the rescaled data
@@ -402,6 +444,11 @@ class pdq {
 	
 	/**
 	 * Convert image data back to a GD image (for flat 1D array)
+	 * 
+	 * @param array $data the array of image data
+	 * @param int $width the width of the image to return
+	 * @param int $height the height of the image to return
+	 * @return void
 	 */
 	protected function renderData(array $data, int $width, int $height) : void {
 		$image = \imagecreatetruecolor($width, $height);
@@ -417,6 +464,10 @@ class pdq {
 	
 	/**
 	 * Calculate image quality metric
+	 * 
+	 * @param array $data the image data as an array
+	 * @param int $block the block size to use
+	 * @return int|false the image quality from 0-100, or false if there's an error
 	 */
 	protected function calculateQuality(array $data, int $block) : int|false {
 		$gradient = 0;
@@ -447,6 +498,9 @@ class pdq {
 	
 	/**
 	 * Compute DCT (Discrete Cosine Transform)
+	 * 
+	 * @param array $data the image data as an array
+	 * @return array|false the dct data, or false if there's an error
 	 */
 	protected function dct(array $data) : array|false {
 		$dct16x64 = \array_fill(0, 1024, 0);
@@ -488,6 +542,10 @@ class pdq {
 	
 	/**
 	 * Generate hash(es) from DCT data
+	 * 
+	 * @param array $data the DCT data
+	 * @param bool $transform whether to return hashes for transformed image (rotated, flipped, etc)
+	 * @return string|array|false the hash as a string (if transform is false) or the hashes as an array (if transform is true), or false if there's an error
 	 */
 	protected function generateHashes(array $data, bool $transform = false) : string|array|false {
 		$dcts = ['original' => $data];
@@ -515,6 +573,9 @@ class pdq {
 	
 	/**
 	 * Rotate a matrix 90 degrees clockwise
+	 * 
+	 * @param array $data the image data to rotate
+	 * @return array the rotated image data as an array
 	 */
 	protected function rotateMatrix(array $data) : array {
 		$len = \count($data);
@@ -530,6 +591,9 @@ class pdq {
 	
 	/**
 	 * Flip a matrix horizontally
+	 * 
+	 * @param array $data the image data to rotate
+	 * @return array the rotated image data as an array
 	 */
 	protected function flipMatrix(array $data) : array {
 		$len = \count($data);
@@ -545,6 +609,9 @@ class pdq {
 	
 	/**
 	 * Compute hash from DCT data
+	 * 
+	 * @param array $data the image data to rotate
+	 * @return array the rotated image data as an array
 	 */
 	protected function computeDct(array $dct) : array {
 
@@ -565,6 +632,9 @@ class pdq {
 	
 	/**
 	 * Convert binary hash to hex string
+	 * 
+	 * @param array $bytes the binary data
+	 * @return string the hex string returned from converting the binary data
 	 */
 	protected function toHex(array $bytes) : string {
 		$hex = '';
@@ -576,6 +646,9 @@ class pdq {
 	
 	/**
 	 * Render a hash visualization
+	 * 
+	 * @param string $hash the hash string to render
+	 * @return GdImage the rendered hash as a GdImage
 	 */
 	public function renderHash(string $hash) : \GdImage {
 
@@ -616,6 +689,13 @@ class pdq {
 		return $image;
 	}
 
+	/**
+	 * Calculates the difference between two hex strings
+	 * 
+	 * @param string $hex1 the first hex string to compare
+	 * @param string $hex2 the second hex string to compare
+	 * @return int the distance (difference)
+	*/
 	public function hammingDistance(string $hex1, string $hex2) : int {
 		$a1 = $this->hex2binCustom($hex1);
 		$a2 = $this->hex2binCustom($hex2);
@@ -627,7 +707,13 @@ class pdq {
 		}
 		return $dh;
 	}
-	
+
+	/**
+	 * Converts a hex string to binary
+	 * 
+	 * @param string $hex the hex string to convert
+	 * @return string the converted binary string
+	 */
 	protected function hex2binCustom(string $hex) : string {
 		$bin = [];
 		foreach (\str_split($hex) AS $item) {
