@@ -129,14 +129,11 @@ class pdq {
 		$width = \imagesx($image);
 		$height = \imagesy($image);
 		
-		// Cap the size to the smaller dimension or the maximum size
-		$dim = \min($width, $height, $size);
-		
 		// Create new square image
-		$square = \imagecreatetruecolor($dim, $dim);
+		$square = \imagecreatetruecolor($size, $size);
 		
 		// Copy and resize the entire image to the square (this will distort the aspect ratio)
-		if (\imagecopyresampled($square, $image, 0, 0, 0, 0, $dim, $dim, $width, $height)) { 
+		if (\imagecopyresampled($square, $image, 0, 0, 0, 0, $size, $size, $width, $height)) { 
 			if ($this->config['debug']) {
 				$this->render($square);
 			}
