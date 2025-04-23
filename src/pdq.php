@@ -135,12 +135,6 @@ class pdq {
 		// Create new square image
 		$square = \imagecreatetruecolor($dim, $dim);
 		
-		// Preserve transparency if needed
-		\imagealphablending($square, false);
-		\imagesavealpha($square, true);
-		$transparent = \imagecolorallocatealpha($square, 255, 255, 255, 127);
-		\imagefilledrectangle($square, 0, 0, $dim, $dim, $transparent);
-		
 		// Copy and resize the entire image to the square (this will distort the aspect ratio)
 		if (\imagecopyresampled($square, $image, 0, 0, 0, 0, $dim, $dim, $width, $height)) { 
 			if ($this->config['debug']) {
@@ -194,7 +188,7 @@ class pdq {
 			$row = [];
 			for ($x = 0; $x < $width; $x++) {
 				$rgb = \imagecolorat($image, $x, $y);
-				$r = ($rgb >> 16) & 0xFF;
+				$r = $rgb >> 16;
 				$g = ($rgb >> 8) & 0xFF;
 				$b = $rgb & 0xFF;
 				$row[$x] = $luma['r'] * $r + $luma['g'] * $g + $luma['b'] * $b;
