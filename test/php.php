@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-require dirname(__DIR__) . '/src/pdq.php';
+require \dirname(__DIR__) . '/src/pdq.php';
 require __DIR__.'/scripts/pdq.php';
 
 if (!empty($_FILES['file'])) {
