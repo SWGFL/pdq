@@ -14,11 +14,8 @@ class pdq {
 		'transform' => false
 	];
 
-	protected array $steps = [];
-
 	public function __construct(array $config = []) {
 		$this->config = \array_merge($this->config, $config);
-		$this->steps = [];
 	}
 
 	/**
@@ -59,7 +56,7 @@ class pdq {
 				return false;
 
 			// 2 pass box blur filter
-			} elseif (($data['data'] = $this->jaroszFilter($data['data'], $data['width'], $data['height'])) === false) {
+			} elseif (($data['data'] = $this->jaroszFilter($data['data'], $data['width'], $data['height'], $this->config['passes'])) === false) {
 				$error = 'Unable to apply blur filter';
 				return false;
 
@@ -88,12 +85,10 @@ class pdq {
 				$output[] = [
 					'type' => 'pdq',
 					'hash' => $hashes,
-					'quality' => $quality,
-					'steps' => $this->steps
+					'quality' => $quality
 				];
 			}
 		}
-		
 		return isset($output[1]) ? $output : $output[0];
 	}
 	
@@ -165,45 +160,32 @@ class pdq {
 	
 	/**
 	 * Convert RGBA image data to luminance (grayscale)
-	 * 
-	 * @param GdImage $image the image to convert
-	 * @return array|false the luma matrix as an array, or false if there's an error
 	 */
-	protected function luminance(\GdImage $image) : array|false {
+	protected function luminance(\GdImage $image) : array {
 		$luma = [
 			'r' => 0.299,
 			'g' => 0.587,
 			'b' => 0.114
 		];
+		$data = [
+			'width' => \imagesx($image),
+			'height' => \imagesy($image),
+			'data' => []
+		];
 		
-		$width = \imagesx($image);
-		$height = \imagesy($image);
-		
-		// Create a 2D array like the original implementation
-		$lumaMatrix = [];
-		for ($y = 0; $y < $height; $y++) {
-			$row = [];
-			for ($x = 0; $x < $width; $x++) {
+		for ($y = 0; $y < $data['height']; $y++) {
+			for ($x = 0; $x < $data['width']; $x++) {
 				$rgb = \imagecolorat($image, $x, $y);
-				$r = $rgb >> 16;
+				$r = ($rgb >> 16) & 0xFF;
 				$g = ($rgb >> 8) & 0xFF;
 				$b = $rgb & 0xFF;
-				$row[$x] = $luma['r'] * $r + $luma['g'] * $g + $luma['b'] * $b;
+				$data['data'][] = $luma['r'] * $r + $luma['g'] * $g + $luma['b'] * $b;
 			}
-			$lumaMatrix[$y] = $row;
 		}
-
-		$data = [
-			'width' => $width,
-			'height' => $height,
-			'data' => $lumaMatrix
-		];
 
 		if ($this->config['debug']) {
-			$this->renderLuminance($lumaMatrix, $width, $height);
+			$this->renderData($data['data'], $data['width'], $data['height']);
 		}
-		
-		$this->steps['luminance'] = $lumaMatrix;
 		return $data;
 	}
 	
@@ -230,70 +212,69 @@ class pdq {
 	}
 	
 	/**
-	 * Apply Jarosz box blur filter using original implementation approach
-	 * This uses the 2D matrix approach from the original implementation
-	 * 
-	 * @param array $lumaMatrix the array of luma data
-	 * @param int $width the width of the image
-	 * @param int $height the height of the image
-	 * @return array|false the blurred image as array data, or false if there's an error
+	 * Apply Jarosz box blur filter
 	 */
-	protected function jaroszFilter(array $lumaMatrix, int $width, int $height) : array|false {
-		// Calculate window sizes based on divisor
-		$windowSizeAlongRows = $this->computeJaroszFilterWindowSize($width);
-		$windowSizeAlongCols = $this->computeJaroszFilterWindowSize($height);
+	protected function jaroszFilter(array $data, int $width, int $height, int $passes) : array {
+
+		// Calculate window sizes
+		$divisor = $this->config['divisor'];
+		$xblur = \intval(($width + $divisor - 1) / $divisor);
+		$yblur = \intval(($height + $divisor - 1) / $divisor);
+		$output = \array_fill(0, \count($data), 0);
 		
-		// Create a second matrix for the intermediate values
-		$otherMatrix = [];
-		for ($i = 0; $i < $height; $i++) {
-			$row = [];
-			for ($j = 0; $j < $width; $j++) {
-				$row[$j] = 0;
-			}
-			$otherMatrix[$i] = $row;
+		// Apply filter
+		for ($k = 0; $k < $passes; $k++) {
+			$output = $this->boxBlurRows($data, $output, $width, $height, $xblur);
+			$data = $this->boxBlurColumns($output, $data, $width, $height, $yblur);
 		}
-		
-		// Apply multiple passes of box blur
-		for ($k = 0; $k < $this->config['passes']; $k++) {
-			$this->boxAlongRows($lumaMatrix, $otherMatrix, $height, $width, $windowSizeAlongRows);
-			$this->boxAlongCols($otherMatrix, $lumaMatrix, $height, $width, $windowSizeAlongCols);
-		}
-		
+
 		if ($this->config['debug']) {
-			$this->renderLuminance($lumaMatrix, $width, $height);
+			$this->renderData($output, $width, $height);
 		}
-		
-		$this->steps['jaroszFilter'] = $lumaMatrix;
-		return $lumaMatrix;
+		return $output;
 	}
 	
-	/**
-	 * Calculate Jarosz filter window size
-	 * 
-	 * @param int $dimension the dimension of the original image
-	 * @return int the size
-	 */
-	protected function computeJaroszFilterWindowSize(int $dimension) : int {
-		return \intval(($dimension + $this->config['divisor'] - 1) / $this->config['divisor']);
-	}
+	protected function boxBlurRows(array $input, array $output, int $width, int $height, int $radius) : array {
+		// $iarr = 1 / ($radius + $radius + 1); // convolution matrix value - constant for box blur
 	
-	/**
-	 * Apply box blur along rows
-	 * 
-	 * @param array $inImage the array data of the input
-	 * @param array $outImage the array data of the output
-	 * @param int $numRows the number of rows to parse
-	 * @param int $numCols the number of columns to parse
-	 * @param int $windowSize the size of the window
-	 * @return void
-	 */
-	protected function boxAlongRows(array &$inImage, array &$outImage, int $numRows, int $numCols, int $windowSize) : void {
-		for ($i = 0; $i < $numRows; $i++) {
-			$halfWindowSize = \intval(($windowSize + 2) / 2); // 7->4, 8->5
+		// // loop through each row
+		// for ($i = 0; $i < $height; $i++) {
+		// 	$ti = $i * $width;
+		// 	$li = $ti;
+		// 	$ri = $ti + $radius;
+		// 	$fv = $input[$ti];
+		// 	$lv = $input[$ti + $width - 1];
+		// 	$val = ($radius + 1) * $fv;
+	
+		// 	// add up from the left to the $radius - reflecting the missing data
+		// 	for ($j = 0; $j < $radius; $j++) {
+		// 		$val += $input[$ti + $j];
+		// 	}
+	
+		// 	// average the $radius of pixels
+		// 	for ($j = 0; $j <= $radius; $j++) {
+		// 		$val += $input[$ri++] - $fv;
+		// 		$output[$ti++] = $val * $iarr;
+		// 	}
+			
+		// 	// take a floating average from {$radius} to {$width - $radius}
+		// 	for ($j = $radius + 1; $j < $width - $radius; $j++) {
+		// 		$val += $input[$ri++] - $input[$li++];
+		// 		$output[$ti++] = $val * $iarr;
+		// 	}
+			
+		// 	// average out the last {$radius} pixels
+		// 	for ($j = 0; $j < $radius; $j++) {
+		// 		$val += $lv - $input[$li++];
+		// 		$output[$ti++] = $val * $iarr;
+		// 	}
+		// }
+		for ($i = 0; $i < $width; $i++) {
+			$halfWindowSize = \intval(($radius + 2) / 2); // 7->4, 8->5
 			
 			$phase1Nreps = $halfWindowSize - 1;
-			$phase2Nreps = $windowSize - $halfWindowSize + 1;
-			$phase3Nreps = $numCols - $windowSize;
+			$phase2Nreps = $radius - $halfWindowSize + 1;
+			$phase3Nreps = $height - $radius;
 			$phase4Nreps = $halfWindowSize - 1;
 			
 			$li = 0; // Index of left edge of read window, for subtracts
@@ -305,25 +286,25 @@ class pdq {
 			
 			// PHASE 1: ACCUMULATE FIRST SUM NO WRITES
 			for ($k = 0; $k < $phase1Nreps; $k++) {
-				$sum += $inImage[$i][$ri];
+				$sum += $input[$i * $height + $ri];
 				$currentWindowSize++;
 				$ri++;
 			}
 			
 			// PHASE 2: INITIAL WRITES WITH SMALL WINDOW
 			for ($k = 0; $k < $phase2Nreps; $k++) {
-				$sum += $inImage[$i][$ri];
+				$sum += $input[$i * $height + $ri];
 				$currentWindowSize++;
-				$outImage[$i][$oi] = $sum / $currentWindowSize;
+				$output[$i * $height + $oi] = $sum / $currentWindowSize;
 				$ri++;
 				$oi++;
 			}
 			
 			// PHASE 3: WRITES WITH FULL WINDOW
 			for ($k = 0; $k < $phase3Nreps; $k++) {
-				$sum += $inImage[$i][$ri];
-				$sum -= $inImage[$i][$li];
-				$outImage[$i][$oi] = $sum / $currentWindowSize;
+				$sum += $input[$i * $height + $ri];
+				$sum -= $input[$i * $height + $li];
+				$output[$i * $height + $oi] = $sum / $currentWindowSize;
 				$li++;
 				$ri++;
 				$oi++;
@@ -331,32 +312,64 @@ class pdq {
 			
 			// PHASE 4: FINAL WRITES WITH SMALL WINDOW
 			for ($k = 0; $k < $phase4Nreps; $k++) {
-				$sum -= $inImage[$i][$li];
+				$sum -= $input[$i * $height + $li];
 				$currentWindowSize--;
-				$outImage[$i][$oi] = $sum / $currentWindowSize;
+				$output[$i * $height + $oi] = $sum / $currentWindowSize;
 				$li++;
 				$oi++;
 			}
 		}
+		return $output;
 	}
 	
-	/**
-	 * Apply box blur along columns
-	 * 
-	 * @param array $inImage the array data of the input
-	 * @param array $outImage the array data of the output
-	 * @param int $numRows the number of rows to parse
-	 * @param int $numCols the number of columns to parse
-	 * @param int $windowSize the size of the window
-	 * @return void
-	 */
-	protected function boxAlongCols(array &$inImage, array &$outImage, int $numRows, int $numCols, int $windowSize) : void {
-		for ($j = 0; $j < $numCols; $j++) {
-			$halfWindowSize = \intval(($windowSize + 2) / 2); // 7->4, 8->5
+	protected function boxBlurColumns(array $input, array $output, int $width, int $height, int $radius) : array {
+		// $iarr = 1 / ($radius + $radius + 1); // convolution matrix value - constant for box blur
+	
+		// // loop through each column
+		// for ($i = 0; $i < $width; $i++) {
+		// 	$ti = $i;
+		// 	$li = $ti;
+		// 	$ri = $ti + $radius * $width;
+		// 	$fv = $input[$ti];
+		// 	$lv = $input[$ti + $width * ($height - 1)];
+		// 	$val = ($radius + 1) * $fv;
+	
+		// 	// add up from the top to the $radius - reflecting the missing data
+		// 	for ($j = 0; $j < $radius; $j++) {
+		// 		$val += $input[$ti + $j * $width];
+		// 	}
+	
+		// 	// average the $radius of pixels
+		// 	for ($j = 0; $j <= $radius; $j++) {
+		// 		$val += $input[$ri] - $fv;
+		// 		$output[$ti] = $val * $iarr;
+		// 		$ri += $width;
+		// 		$ti += $width;
+		// 	}
+			
+		// 	// take a floating average from {$radius} to {$height - $radius}
+		// 	for ($j = $radius + 1; $j < $height - $radius; $j++) {
+		// 		$val += $input[$ri] - $input[$li];
+		// 		$output[$ti] = $val * $iarr;
+		// 		$li += $width;
+		// 		$ri += $width;
+		// 		$ti += $width;
+		// 	}
+			
+		// 	// average out the last {$radius} pixels
+		// 	for ($j = 0; $j < $radius; $j++) {
+		// 		$val += $lv - $input[$li];
+		// 		$output[$ti] = $val * $iarr;
+		// 		$li += $width;
+		// 		$ti += $width;
+		// 	}
+		// }
+		for ($j = 0; $j < $height; $j++) {
+			$halfWindowSize = \intval(($radius + 2) / 2); // 7->4, 8->5
 			
 			$phase1Nreps = $halfWindowSize - 1;
-			$phase2Nreps = $windowSize - $halfWindowSize + 1;
-			$phase3Nreps = $numRows - $windowSize;
+			$phase2Nreps = $radius - $halfWindowSize + 1;
+			$phase3Nreps = $width - $radius;
 			$phase4Nreps = $halfWindowSize - 1;
 			
 			$li = 0; // Index of left edge of read window, for subtracts
@@ -368,25 +381,25 @@ class pdq {
 			
 			// PHASE 1: ACCUMULATE FIRST SUM NO WRITES
 			for ($k = 0; $k < $phase1Nreps; $k++) {
-				$sum += $inImage[$ri][$j];
+				$sum += $input[$ri * $width + $j];
 				$currentWindowSize++;
 				$ri++;
 			}
 			
 			// PHASE 2: INITIAL WRITES WITH SMALL WINDOW
 			for ($k = 0; $k < $phase2Nreps; $k++) {
-				$sum += $inImage[$ri][$j];
+				$sum += $input[$ri * $width + $j];
 				$currentWindowSize++;
-				$outImage[$oi][$j] = $sum / $currentWindowSize;
+				$output[$oi * $width + $j] = $sum / $currentWindowSize;
 				$ri++;
 				$oi++;
 			}
 			
 			// PHASE 3: WRITES WITH FULL WINDOW
 			for ($k = 0; $k < $phase3Nreps; $k++) {
-				$sum += $inImage[$ri][$j];
-				$sum -= $inImage[$li][$j];
-				$outImage[$oi][$j] = $sum / $currentWindowSize;
+				$sum += $input[$ri * $width + $j];
+				$sum -= $input[$li * $width + $j];
+				$output[$oi * $width + $j] = $sum / $currentWindowSize;
 				$li++;
 				$ri++;
 				$oi++;
@@ -394,42 +407,41 @@ class pdq {
 			
 			// PHASE 4: FINAL WRITES WITH SMALL WINDOW
 			for ($k = 0; $k < $phase4Nreps; $k++) {
-				$sum -= $inImage[$li][$j];
+				$sum -= $input[$li * $width + $j];
 				$currentWindowSize--;
-				$outImage[$oi][$j] = $sum / $currentWindowSize;
+				$output[$oi * $width + $j] = $sum / $currentWindowSize;
 				$li++;
 				$oi++;
 			}
 		}
+		return $output;
 	}
 	
 	/**
 	 * Rescale image data to specific block size
 	 * 
-	 * @param array $lumaMatrix the luma matrix array data
+	 * @param array $data the luma matrix array data
 	 * @param int $width the width to scale to
 	 * @param int $height the height to scale to
 	 * @param int $block the block size
 	 * @return array|false the rescaled image data as an array, or false if there's an error
 	 */
-	protected function rescale(array $lumaMatrix, int $width, int $height, int $block) : array|false {
+	protected function rescale(array $data, int $width, int $height, int $block) : array|false {
 		// Create a 1D array for the rescaled data
 		$scaled = \array_fill(0, $block * $block, 0);
 		
 		// Target centers not corners as in the original implementation
 		for ($i = 0; $i < $block; $i++) {
 			for ($j = 0; $j < $block; $j++) {
-				$y = \intval(\round(($j + 0.5) * $height / $block));
 				$x = \intval(\round(($i + 0.5) * $width / $block));
-				$scaled[$j * $block + $i] = $lumaMatrix[$y][$x];
+				$y = \intval(\round(($j + 0.5) * $height / $block));
+				$scaled[$j * $block + $i] = $data[$y * $width + $x];
 			}
 		}
 		
 		if ($this->config['debug']) {
 			$this->renderData($scaled, $block, $block);
 		}
-		
-		$this->steps['64x64'] = $scaled;
 		return $scaled;
 	}
 	
@@ -527,7 +539,6 @@ class pdq {
 				$buffer16x16[$i * 16 + $j] = $sumk;
 			}
 		}
-		$this->steps['dct'] = $buffer16x16;
 		return $buffer16x16;
 	}
 	

@@ -340,7 +340,7 @@
 
 						// populate table
 						results.forEach(result => {
-							const phprefcompare = hammingDistance(result.phpcompare.hash, result.php.hash);
+							const phprefcompare = compare && comparephp ? hammingDistance(result.phpcompare.hash, result.php.hash) : null;
 							tableRow(table, "td", [].concat(
 								[
 									result.file,
@@ -354,7 +354,7 @@
 									),
 									result.hash.quality
 								],
-								[
+								!compare && !comparephp ? [] : [
 									[].concat(
 										compare ? [result.distance + " / 256 (" + parseFloat(100 / 256 * result.distance).toFixed(3) + "%) (Javascript/Ref)"] : [],
 										comparephp ? [result.phpdistance + " / 256 (" + parseFloat(100 / 256 * result.phpdistance).toFixed(3) + "%) (PHP/Ref)"] : [],
@@ -365,9 +365,9 @@
 								[
 									[].concat(
 										compare ? [result.referencetime + "ms (Reference)"] : [],
-										[result.time + "ms" + (compare ? " (Javascript, " + parseFloat(result.referencetime / result.time).toFixed(3) + "x" + ")" : "")],
-										comparephp ? [result.phptime + "ms" + (comparephp ? " (PHP, " + parseFloat(result.time / result.referencetime).toFixed(3) + "x" + ")" : "")] : [],
-										comparephp && compare ? [result.phpcomparetime + "ms (PHP Ref, " + parseFloat(result.phpcomparetime / result.referencetime).toFixed(3) + "x" + ")"] : []
+										[result.time + "ms" + (compare ? " (Javascript, " + parseFloat(result.referencetime / result.time).toFixed(3) + "x)" : "")],
+										comparephp ? [result.phptime + "ms" + (comparephp ? " (PHP, " + parseFloat(result.referencetime / result.phptime).toFixed(3) + "x" + ")" : "")] : [],
+										comparephp && compare ? [result.phpcomparetime + "ms (PHP Ref, " + parseFloat(result.referencetime / result.phpcomparetime).toFixed(3) + "x)"] : []
 									)
 								]
 							));
@@ -391,8 +391,8 @@
 
 						// write totals
 						tableRow(table, "td", [].concat(
-							["", "", "", "", "TOTALS:"],
-							[
+							["", "", "", "", "Totals:"],
+							!compare && !comparephp ? [] : [
 								[].concat(
 									compare ? [diff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * diff).toFixed(3) + "%) (Javascript/Ref)"] : [],
 									comparephp ? [phpdiff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * phpdiff).toFixed(3) + "%) (PHP/Ref)"] : [],
@@ -403,18 +403,12 @@
 							[
 								[].concat(
 									compare ? [reftime + "ms (Reference)"] : [],
-									[hashtime + "ms" + (compare || comparephp ? " (Javascript)" : "")],
-									comparephp ? [phptime + "ms (PHP)"] : [],
-									comparephp && compare ? [phpreftime + "ms (PHP Reference)"] : [],
+									[hashtime + "ms" + (compare || comparephp ? " (Javascript, " + parseFloat(reftime / hashtime).toFixed(3) + "x)" : "")],
+									comparephp ? [phptime + "ms (PHP, " + parseFloat(phptime / phpreftime).toFixed(3) + "x)"] : [],
+									comparephp && compare ? [phpreftime + "ms (PHP Reference, " + parseFloat(reftime / phpreftime).toFixed(3) + "x)"] : [],
 								)
 							]
 						));
-
-						// console.log([].concat(
-						// 			compare ? [diff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * diff).toFixed(3) + "%) (Javascript/Ref)"] : [],
-						// 			comparephp ? [phpdiff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * phpdiff).toFixed(3) + "%) (PHP/Ref)"] : [],
-						// 			comparephp && compare ? [phprefdiff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * phprefdiff).toFixed(3) + "%) (PHP Ref/Ref)"] : [],
-						// 		));
 
 						// write the results
 						document.getElementById("pdq-results").replaceChildren(...nodes);

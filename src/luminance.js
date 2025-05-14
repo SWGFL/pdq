@@ -9,7 +9,7 @@ export default imgdata => {
 		  
 	// Convert the pixel data to luminance
 	for (let i = 0; i < imgdata.length; i += 4) {
-		data[i] = luma.r * imgdata[i] + luma.g * imgdata[i + 1] + luma.b * imgdata[i + 2];
+		data[i / 4] = luma.r * imgdata[i] + luma.g * imgdata[i + 1] + luma.b * imgdata[i + 2];
 	}
 	return data;
 };

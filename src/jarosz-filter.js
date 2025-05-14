@@ -32,7 +32,7 @@ function boxBlurRows(input, output, width, height, radius) {
 			val += lv - input[li++];
 			output[ti++] = val * iarr;
 		}
-    }
+	}
 }
 
 function boxBlurColumns(input, output, width, height, radius) {
