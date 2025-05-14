@@ -256,10 +256,20 @@
 									if (comparephp) {
 										const comparetime = performance.now();
 										return php(file).then(result => {
+											if(config.debug) {
+												console.groupCollapsed(`%cPHP Steps%c\n${file.name}`, 'font-weight: bold; font-size: 16px;');
+												for (const property in result.steps) {
+													console.groupCollapsed(property);
+													console.log(result.steps[property]);
+													console.groupEnd();
+												}
+												console.groupEnd();
+											}
 											return Object.assign(results, {
 												phptime: performance.now() - comparetime,
 												php: result,
-												phpdistance: hammingDistance(result.hash, results.reference || results.hash.hash)
+												phpdistance: hammingDistance(result.hash, results.reference || results.hash.hash),
+												phpsteps: result.steps
 											});
 										});
 									}
@@ -271,6 +281,15 @@
 									if (comparephp && compare) {
 										const comparetime = performance.now();
 										return php(file, true).then(result => {
+											if(config.debug) {
+												console.groupCollapsed(`%cPHP Reference Steps%c\n${file.name}`, 'font-weight: bold; font-size: 16px;');
+												for (const property in result.steps) {
+													console.groupCollapsed(property);
+													console.log(result.steps[property]);
+													console.groupEnd();
+												}
+												console.groupEnd();
+											}
 											return Object.assign(results, {
 												phpcomparetime: performance.now() - comparetime,
 												phpcompare: result,
@@ -316,10 +335,12 @@
 							reftime = 0,
 							hashtime = 0,
 							phptime = 0,
-							phpreftime = 0;
+							phpreftime = 0,
+							phprefcomparediff = 0;
 
 						// populate table
 						results.forEach(result => {
+							const phprefcompare = hammingDistance(result.phpcompare.hash, result.php.hash);
 							tableRow(table, "td", [].concat(
 								[
 									result.file,
@@ -337,7 +358,8 @@
 									[].concat(
 										compare ? [result.distance + " / 256 (" + parseFloat(100 / 256 * result.distance).toFixed(3) + "%) (Javascript/Ref)"] : [],
 										comparephp ? [result.phpdistance + " / 256 (" + parseFloat(100 / 256 * result.phpdistance).toFixed(3) + "%) (PHP/Ref)"] : [],
-										comparephp && compare ? [result.phpcomparedistance + " / 256 (" + parseFloat(100 / 256 * result.phpcomparedistance).toFixed(3) + "%) (PHP Ref/Ref)"] : []
+										comparephp && compare ? [result.phpcomparedistance + " / 256 (" + parseFloat(100 / 256 * result.phpcomparedistance).toFixed(3) + "%) (PHP Ref/Ref)"] : [],
+										comparephp && compare ? [phprefcompare + " / 256 (" + parseFloat(100 / 256 * phprefcompare).toFixed(3) + "%) (PHP/PHP Ref)"] : [],
 									)
 								],
 								[
@@ -362,20 +384,22 @@
 							if (comparephp && compare) {
 								phprefdiff += result.phpcomparedistance;
 								phpreftime += result.phpcomparetime;
+								phprefcomparediff += phprefcompare;
 							}
 							hashtime += result.time;
 						});
 
 						// write totals
 						tableRow(table, "td", [].concat(
-							["", "", "", "", ""],
+							["", "", "", "", "TOTALS:"],
 							[
 								[].concat(
 									compare ? [diff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * diff).toFixed(3) + "%) (Javascript/Ref)"] : [],
 									comparephp ? [phpdiff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * phpdiff).toFixed(3) + "%) (PHP/Ref)"] : [],
 									comparephp && compare ? [phprefdiff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * phprefdiff).toFixed(3) + "%) (PHP Ref/Ref)"] : [],
+									comparephp && compare ? [phprefcomparediff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * phprefcomparediff).toFixed(3) + "%) (PHP/PHP Ref)"] : [],
 								)
-							]
+							],
 							[
 								[].concat(
 									compare ? [reftime + "ms (Reference)"] : [],
@@ -386,11 +410,11 @@
 							]
 						));
 
-						console.log([].concat(
-									compare ? [diff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * diff).toFixed(3) + "%) (Javascript/Ref)"] : [],
-									comparephp ? [phpdiff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * phpdiff).toFixed(3) + "%) (PHP/Ref)"] : [],
-									comparephp && compare ? [phprefdiff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * phprefdiff).toFixed(3) + "%) (PHP Ref/Ref)"] : [],
-								));
+						// console.log([].concat(
+						// 			compare ? [diff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * diff).toFixed(3) + "%) (Javascript/Ref)"] : [],
+						// 			comparephp ? [phpdiff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * phpdiff).toFixed(3) + "%) (PHP/Ref)"] : [],
+						// 			comparephp && compare ? [phprefdiff + " / " + (results.length * 256) + " (" + parseFloat(100 / (results.length * 256) * phprefdiff).toFixed(3) + "%) (PHP Ref/Ref)"] : [],
+						// 		));
 
 						// write the results
 						document.getElementById("pdq-results").replaceChildren(...nodes);
