@@ -49,7 +49,7 @@ class pdq {
 				return false;
 
 			// resize the image to a square
-			} elseif (($image = $this->resize($image, $scale)) === false) {
+			} elseif (($image = $this->resize($image ?? $item, $scale)) === false) {
 				$error = 'Unable to resize image';
 				return false;
 
@@ -100,7 +100,7 @@ class pdq {
 	 * Load an image from a file
 	 * 
 	 * @param string $file the file path of the image
-	 * @return GdImage|false the image as a GdImage object, or false if there's an error
+	 * @return \GdImage|false the image as a GdImage object, or false if there's an error
 	 */
 	protected function loadImageFromFile(string $file) : \GdImage|false {
 		$type = \mime_content_type($file);
@@ -146,7 +146,7 @@ class pdq {
 	/**
 	 * Echoes an image onto the page
 	 * 
-	 * @param GdImage $image the image to render as a GdImage object
+	 * @param \GdImage $image the image to render as a GdImage object
 	 * @return void
 	 */
 	protected function render(\GdImage $image) : void {
@@ -437,7 +437,7 @@ class pdq {
 	 * Render a hash visualization
 	 * 
 	 * @param string $hash the hash string to render
-	 * @return GdImage the rendered hash as a GdImage
+	 * @return \GdImage the rendered hash as a GdImage
 	 */
 	public function renderHash(string $hash) : \GdImage {
 
