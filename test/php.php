@@ -37,8 +37,8 @@ if (!empty($_FILES['file'])) {
 		exit(\json_encode($data));
 	}
 }
-\http_response_code(400);
-exit;
+// \http_response_code(400);
+// exit;
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
@@ -62,10 +62,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 				list($hash, $quality) = \PDQHasher::computeHashAndQualityFromFilename($file, false, false, true);
 				$reftime = \round((\microtime(true) - $refstart) * 1000);
 				$hex = $hash->toHexString();
-				$distance = $pdq->hammingDistance($hex, $result[0]['hash']);
-				$results[] = \array_merge($result[0], ['time' => $time, 'reference' => $hex, 'diff' => $distance, 'reftime' => $reftime]);
+				$distance = $pdq->hammingDistance($hex, $result['hash']);
+				$results[] = \array_merge($result, ['time' => $time, 'reference' => $hex, 'diff' => $distance, 'reftime' => $reftime]);
 			} else {
-				$results[] = \array_merge($result[0], ['time' => $time]);
+				$results[] = \array_merge($result, ['time' => $time]);
 			}
 		}
 

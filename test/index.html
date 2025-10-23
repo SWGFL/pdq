@@ -256,7 +256,7 @@
 									if (comparephp) {
 										const comparetime = performance.now();
 										return php(file).then(result => {
-											if(config.debug) {
+											if (config.debug) {
 												console.groupCollapsed(`%cPHP Steps%c\n${file.name}`, 'font-weight: bold; font-size: 16px;');
 												for (const property in result.steps) {
 													console.groupCollapsed(property);
@@ -366,7 +366,7 @@
 									[].concat(
 										compare ? [result.referencetime + "ms (Reference)"] : [],
 										[result.time + "ms" + (compare ? " (Javascript, " + parseFloat(result.referencetime / result.time).toFixed(3) + "x)" : "")],
-										comparephp ? [result.phptime + "ms" + (comparephp ? " (PHP, " + parseFloat(result.referencetime / result.phptime).toFixed(3) + "x" + ")" : "")] : [],
+										comparephp ? [result.phptime + "ms (PHP, " + parseFloat(result.phptime / (phprefcompare ? result.referencetime : result.time)).toFixed(3) + "x" + ")"] : [],
 										comparephp && compare ? [result.phpcomparetime + "ms (PHP Ref, " + parseFloat(result.referencetime / result.phpcomparetime).toFixed(3) + "x)"] : []
 									)
 								]
@@ -404,7 +404,7 @@
 								[].concat(
 									compare ? [reftime + "ms (Reference)"] : [],
 									[hashtime + "ms" + (compare || comparephp ? " (Javascript, " + parseFloat(reftime / hashtime).toFixed(3) + "x)" : "")],
-									comparephp ? [phptime + "ms (PHP, " + parseFloat(phptime / phpreftime).toFixed(3) + "x)"] : [],
+									comparephp ? [phptime + "ms (PHP, " + parseFloat(phptime / hashtime).toFixed(3) + "x)"] : [],
 									comparephp && compare ? [phpreftime + "ms (PHP Reference, " + parseFloat(reftime / phpreftime).toFixed(3) + "x)"] : [],
 								)
 							]
