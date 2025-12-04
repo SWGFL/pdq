@@ -3,10 +3,16 @@ declare(strict_types=1);
 require \dirname(__DIR__) . '/src/pdq.php';
 require __DIR__.'/scripts/pdq.php';
 
+// default variable values
+$compare = $debug = $results = false;
+
+// this bit is for the Javascript/PHP comparison
 if (!empty($_FILES['file'])) {
 	$reference = !empty($_POST['reference']);
 	$file = $_FILES['file']['tmp_name'];
 	$mime = \mime_content_type($file);
+
+	// only images
 	if (\str_starts_with($mime, 'image/')) {
 		$time = \microtime(true);
 		$data = [
@@ -36,158 +42,40 @@ if (!empty($_FILES['file'])) {
 		\header('Content-Type: application/json');
 		exit(\json_encode($data));
 	}
-}
-// \http_response_code(400);
-// exit;
+	\http_response_code(400);
+	exit('Not a valid image');
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
+// this is for this script
+} elseif (!empty($_FILES['pdq-files'])) { 
 
+	// prepare variables
 	$compare = $_POST['pdq-compare'] ?? false;
-	$debug = $_POST['pdq-debug'] ?? false;
+	$pdq = new \swgfl\pdq\pdq(['debug' => $_POST['pdq-debug'] ?? false]);
 
-	// check for files
-	if (!empty($_FILES['pdq-files'])) { 
+	// process images
+	$results = [];
+	foreach ($_FILES['pdq-files']['tmp_name'] AS $key => $file) {
 
-		$pdq = new \swgfl\pdq\pdq(['debug' => $debug]);
+		// generate PDQ
+		$start = \microtime(true);
+		$result = \array_merge([
+			'file' => $_FILES['pdq-files']['name'][$key],
+			'type' => $_FILES['pdq-files']['type'][$key],
+			'size' => \getimagesize($file)
+		], $pdq->run($file));
+		$time = \round((\microtime(true) - $start) * 1000);
 
-		$results = [];
-		foreach($_FILES['pdq-files']['tmp_name'] as $file) {
-
-			$start = \microtime(true);
-			$result = $pdq->run($file);
-			$time = \round((\microtime(true) - $start) * 1000);
-
-			if ($compare) {
-				$refstart = \microtime(true);
-				list($hash, $quality) = \PDQHasher::computeHashAndQualityFromFilename($file, false, false, true);
-				$reftime = \round((\microtime(true) - $refstart) * 1000);
-				$hex = $hash->toHexString();
-				$distance = $pdq->hammingDistance($hex, $result['hash']);
-				$results[] = \array_merge($result, ['time' => $time, 'reference' => $hex, 'diff' => $distance, 'reftime' => $reftime]);
-			} else {
-				$results[] = \array_merge($result, ['time' => $time]);
-			}
+		// compare with reference
+		if ($compare) {
+			$refstart = \microtime(true);
+			list($hash, $quality) = \PDQHasher::computeHashAndQualityFromFilename($file, false, false, true);
+			$reftime = \round((\microtime(true) - $refstart) * 1000);
+			$hex = $hash->toHexString();
+			$distance = $pdq->hammingDistance($hex, $result['hash']);
+			$results[] = \array_merge($result, ['time' => $time, 'reference' => $hex, 'diff' => $distance, 'reftime' => $reftime]);
+		} else {
+			$results[] = \array_merge($result, ['time' => $time]);
 		}
-
-		var_dump($results);
-
-
-		// $pdq = new \swgfl\pdq\pdq(['debug' => $debug]);
-		// $result = $pdq->run($_FILES['pdq-files']['tmp_name']);
-		// var_dump($result);
-    
-		// if (!empty($result)) {
-
-		// 	$totaltime = $totalreftime = $totaldiff = 0;
-
-		// 	echo '<section class="pdq__results" id="pdq-results">
-		// 		<table>
-		// 			<thead>
-		// 				<th>File</th>
-		// 				<th>Type</th>
-		// 				<th>Size</th>
-		// 				<th>Hashes</th>
-		// 				<th>Quality</th>';
-		// 				echo $compare ? '<th>Diff</th>' : '';
-		// 				echo '<th>Speed</th>
-		// 			</thead>
-		// 			<tbody>';
-
-		// 	foreach($result as $index => $processed) {
-
-		// 		if ($compare) {
-		// 			$refstart = \microtime(true);
-		// 			list($hash, $quality) = \PDQHasher::computeHashAndQualityFromFilename($processed['file'], false, false, true);
-		// 			$reftime = \round((\microtime(true) - $refstart) * 1000);
-		// 			$hex = $hash->toHexString();
-		// 			$distance = $pdq->hammingDistance($hex, $processed['pdqhash']['hash'][0]);
-		// 		}
-
-		// 		echo '<tr>
-		// 				<td style="word-break: break-all;">' . $processed['name'] . '</td>
-		// 				<td>' . $processed['mime'] . '</td>
-		// 				<td>' . $processed['size'] . '</td>
-		// 				<td>';
-		// 				echo $compare ? 'Reference: ' . $hex . '<br>PHP: ' . $processed['pdqhash']['hash'][0] : $processed['pdqhash']['hash'][0];
-		// 			echo '</td>
-		// 				<td>' . $processed['quality'] . '</td>';
-		// 			echo $compare ? '<td>' . $distance . '/256 (' . \round(($distance / 256) * 100, 3) . '%)</td>' : '';
-		// 			echo $compare ? '<td>' . $reftime . 'ms (Reference)<br>' . $processed['time'] . 'ms (PHP)<br>' . \round(($reftime / $processed['time']), 3) . 'x</td>' : '<td>' . $processed['time'] . 'ms</td>';
-		// 			echo '</tr>';
-				
-		// 		if($compare) {
-		// 			$totalreftime += $reftime;
-		// 			$totaldiff += $distance;
-		// 		}
-		// 		$totaltime += $processed['time'];
-		// 	}
-
-		// 	echo '<tr>
-		// 			<td></td>
-		// 			<td></td>
-		// 			<td></td>
-		// 			<td></td>
-		// 			<td></td>';
-		// 		echo $compare ? '<td>' . $totaldiff . '/' . (256 * \count($result)) . ' (' . \round(($totaldiff / (256 * \count($result))) * 100, 3) . '%)</td>' : '';
-		// 		echo $compare ? '<td>' . $totalreftime . 'ms (Reference)<br>' . $totaltime . 'ms (PHP)<br>' . \round(($totalreftime / $totaltime), 3) . 'x</td>' : '<td>' . $totaltime . 'ms</td>';
-		// 		echo '</tr>
-		// 		</tbody>
-		// 	</table>
-		// 	</section>';
-
-		// 	if ($debug) {
-		// 		foreach($result as $index => $processed) {
-		// 			echo '<div class="pdq__image-container">';
-		// 			echo '<h3>' . $processed['name'] . '</h3>';
-		// 			echo '<p><strong>Type:</strong> ' . $processed['mime'] . ' <span class="sep">|</span> <strong>Size:</strong> ' . $processed['size']  . ' <span class="sep">|</span> <strong>Hash:</strong> ' . $processed['pdqhash']['hash'][0]  . ' <span class="sep">|</span> <strong>Quality:</strong> ' . $processed['quality']  . ' <span class="sep">|</span> <strong>Speed:</strong> ' . $processed['time'] . 'ms</p>';
-
-		// 			// Output the images
-		// 			foreach($processed as $key => $item) {
-		// 				if(is_object($processed[$key]) && $processed[$key] instanceof GdImage) {
-		// 					// Start output buffering
-		// 					ob_start();
-
-		// 					// Output the image to the buffer
-		// 					imagepng($processed[$key]);
-							
-		// 					// Get the buffer contents and encode as base64
-		// 					$imageData = ob_get_clean();
-		// 					$base64Image = base64_encode($imageData);
-							
-		// 					// Create the data URI
-		// 					$dataUri = 'data:' . $processed['mime'] . ';base64,' . $base64Image;
-							
-		// 					// Output image tag with data URI
-		// 					echo '<img src="' . $dataUri . '" alt="' . $processed['name'] . ' (' . $key . ')">';
-
-		// 					// Free up memory
-		// 					imagedestroy($processed[$key]);
-		// 				}
-
-		// 				// Render the hash
-		// 				if ($key === 'pdqhash') {
-		// 					// Start output buffering
-		// 					ob_start();
-
-		// 					// Output the image to the buffer
-		// 					imagepng($pdq->renderHash($processed['pdqhash']['hash'][0]));
-							
-		// 					// Get the buffer contents and encode as base64
-		// 					$imageData = ob_get_clean();
-		// 					$base64Image = base64_encode($imageData);
-							
-		// 					// Create the data URI
-		// 					$dataUri = 'data:' . $processed['mime'] . ';base64,' . $base64Image;
-							
-		// 					// Output image tag with data URI
-		// 					echo '<img src="' . $dataUri . '" alt="' . $processed['name'] . ' (' . $key . ')">';
-		// 				}
-		// 			}
-		// 		}
-		// 	}
-		// } else {
-		// 	echo 'No result from PDQ class';
-		// }
 	}
 }
 ?>
@@ -267,7 +155,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	<body>
 		<section class="pdq__select">
 			<h1>PHP PDQ Test Page</h1>
-			<p>Select the image(s) you want to test, they will be run against the WASM version and the native code and compared. Output will not be exact due to differences in how the images are processed.</p>
+			<p>Select the image(s) you want to test, they will be run against the reference PHP version of the code. Output will not be exact due to differences in how the images are processed.</p>
 			<form method="POST" enctype="multipart/form-data">
 				<div class="pdq__control">
 					<label class="pdq__label">Select Image(s)<span class="pdq__required">*</span>:</label>
@@ -275,17 +163,48 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 				</div>
 				<div class="pdq__control">
 					<label class="pdq__label">Compare to Reference:</label>
-					<input class="pdq__input" type="checkbox" id="pdq-compare" name="pdq-compare" value="true" />
+					<input class="pdq__input" type="checkbox" id="pdq-compare" name="pdq-compare" value="true"<?= $compare ? ' checked="checked"' : ''; ?> />
 				</div>
 				<div class="pdq__control">
 					<label class="pdq__label">Debug:</label>
-					<input class="pdq__input" type="checkbox" id="pdq-debug" name="pdq-debug" value="true" />
+					<input class="pdq__input" type="checkbox" id="pdq-debug" name="pdq-debug" value="true"<?= $debug ? ' checked="checked"' : ''; ?> />
 				</div>
 				<div class="pdq__control">
 					<input class="pdq__submit" type="submit" id="pdq-start" value="Generate Hashes" />
 				</div>
 			</form>
+			<?php if (!empty($results)) { ?>
+				<table>
+					<thead>
+						<tr>
+							<th>File</th>
+							<th>Type</th>
+							<th>Size</th>
+							<th>Hashes</th>
+							<th>Quality</th>
+							<?php if ($compare) { ?>
+								<th>Diff</th>
+							<?php } ?>
+							<th>Speed</th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ($results AS $item) { ?>
+							<tr>
+								<td><?= \htmlspecialchars($item['file']); ?></td>
+								<td><?= \htmlspecialchars($item['type']); ?></td>
+								<td><?= \htmlspecialchars($item['size'][0].'x'.$item['size'][1]); ?></td>
+								<td><code><?= 'PHP: '.$item['hash'].($compare ? '<br />Ref: '.$item['reference'] : ''); ?></code></td>
+								<td><?= $item['quality']; ?></td>
+								<?php if ($compare) { ?>
+									<td><?= \htmlspecialchars($item['diff'].' / 256 ('.\number_format(100 / 256 * $item['diff'], 3).'%)'); ?></td>
+								<?php } ?>
+								<td><?= \number_format($item['time']).'ms'.($compare ? ' (PHP)<br />'.\number_format($item['reftime']).'ms (Reference)<br />'.\number_format($item['reftime'] / $item['time'], 3).'x' : ''); ?></td>
+							</tr>
+						<?php } ?>
+					</tbody>
+				</table>
+			<?php } ?>
 		</section>
 	</body>
 </html>
-
