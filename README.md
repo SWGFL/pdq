@@ -9,6 +9,7 @@ This project is an attempt to generate hashes natively in the browser, over usin
 The repo comes with some example/testing scripts. After cloning the repo, navigate to the `/test/` directory:
 
 - `index.html`: Test native TypeScript vs PHP vs Reference
+- `vpdq.html`: Test vPDQ video hashing — compares refactored (src) vs Meta reference implementation side-by-side
 - `php.php`: Test PHP vs Reference PHP
 
 ## TypeScript Usage
@@ -270,9 +271,9 @@ The main entry point that chains all the above stages together.
 
 ### vPDQ Module Reference
 
-#### `src/vpdq/hash256.ts`
+#### `src/hash256.ts`
 
-A 256-bit hash class stored as 16 x 16-bit words (matching the C++ reference for interoperability).
+A 256-bit hash class stored as 16 x 16-bit words (matching the C++ reference for interoperability). Shared by both the PDQ and vPDQ pipelines; re-exported from `src/vpdq/index.ts`.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
@@ -322,14 +323,21 @@ Standalone PDQ implementation that works directly on RGBA data without requiring
 | `VPDQ_QUERY_MATCH_THRESHOLD_PERCENT` | 80.0 | Percentage of query frames that must match for a positive result |
 | `VPDQ_INDEX_MATCH_THRESHOLD_PERCENT` | 0.0 | Percentage of target frames that must match |
 
+#### `src/vpdq.ts` (entry point)
+
+The single entry point for the vPDQ API. Uses the [WebCodecs API](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API) (`VideoFrame`) for efficient pixel data extraction when available, falling back to canvas-based extraction in older browsers. Re-exports everything from `src/vpdq/index.ts`.
+
+| Function | Description | Output |
+|----------|-------------|--------|
+| `hashVideoUrl(url, options?)` | Hash a video in the browser. Seeks at `secondsPerHash` intervals (default: 1.0). Set `pruneDistance` to skip frames similar to the last retained one during extraction. | `Promise<VpdqFeature[]>` |
+
 #### `src/vpdq/vpdqHasher.ts`
 
-Uses the [WebCodecs API](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API) (`VideoFrame`) for efficient pixel data extraction when available, falling back to canvas-based extraction in older browsers. WebCodecs avoids the `drawImage` + `getImageData` round-trip by copying RGBA data directly from the video frame.
+Frame hashing and pruning utilities (no DOM/video dependency).
 
 | Function | Description | Output |
 |----------|-------------|--------|
 | `hashFrames(frames)` | Hash an array of pre-extracted RGBA frames. Each frame needs `data`, `width`, `height`, `timestamp`. | `VpdqFeature[]` with sequential frame numbers |
-| `hashVideoUrl(url, options?)` | Hash a video in the browser. Seeks at `secondsPerHash` intervals (default: 1.0). Set `pruneDistance` to skip frames similar to the last retained one during extraction. | `Promise<VpdqFeature[]>` |
 | `pruneFrames(features, pruneDist)` | Remove consecutive frames within `pruneDist` Hamming distance of the last retained frame. | `VpdqFeature[]` (reduced set) |
 
 #### `src/vpdq/matchTwoHash.ts`
