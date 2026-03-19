@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Hash256, popcount16 } from "../../src/vpdq/hash256";
+import { Hash256, popcount16 } from "../../src/hash256";
 
 describe("popcount16", () => {
 	it("returns 0 for 0", () => {

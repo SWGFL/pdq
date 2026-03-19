@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>vPDQ Video Hashing Test Page</title>
+		<style>
+			body {
+				font-family: Segoe UI, sans-serif;
+			}
+			.vpdq__control {
+				padding: 3px 0;
+				display: flex;
+				align-items: center;
+			}
+			.vpdq__label {
+				flex: 0 0 25%;
+				box-sizing: border-box;
+				padding-right: 10px;
+				text-align: right;
+			}
+			.vpdq__input {
+				border: 1px solid #000;
+				padding: 10px;
+			}
+			.vpdq__submit {
+				background: #000;
+				padding: 10px;
+				color: #FFF;
+				font-weight: bold;
+				margin-left: 25%;
+				border: 0;
+				width: 40%;
+				cursor: pointer;
+			}
+			.vpdq__submit:disabled {
+				background: #999;
+				cursor: not-allowed;
+			}
+			.vpdq__progress {
+				margin: 30px 0 0 25%;
+				display: flex;
+				gap: 10px;
+			}
+			.vpdq__progress > progress {
+				flex: 0 0 40%;
+				height: 15px;
+				appearance: none;
+			}
+			table, thead, tbody, tr, td, th {
+				padding: 0;
+				border: 0;
+				margin: 0;
+				border-collapse: separate;
+				border-spacing: 0;
+				text-align: left;
+			}
+			table {
+				margin: 15px 0;
+				padding: 0;
+				width: 100%;
+			}
+			th, td {
+				padding: 5px;
+				border-bottom: 1px solid #AAA;
+				vertical-align: top;
+			}
+			th {
+				background: #F5F5F5;
+			}
+			.vpdq__hash {
+				font-family: monospace;
+				font-size: 11px;
+				word-break: break-all;
+			}
+			.vpdq__section {
+				margin-bottom: 30px;
+			}
+			.vpdq__match-yes {
+				color: #155724;
+				font-weight: bold;
+			}
+			.vpdq__match-no {
+				color: #721c24;
+				font-weight: bold;
+			}
+			.vpdq__diff-0 {
+				color: #155724;
+				font-weight: bold;
+			}
+			.vpdq__diff-nonzero {
+				color: #721c24;
+				font-weight: bold;
+			}
+			.vpdq__faster {
+				color: #155724;
+			}
+			.vpdq__slower {
+				color: #721c24;
+			}
+			.vpdq__perf-table td {
+				text-align: right;
+			}
+			.vpdq__perf-table td:first-child {
+				text-align: left;
+				font-weight: bold;
+			}
+			input, textarea, select, button {
+				font-family: inherit;
+				font-size: inherit;
+				line-height: inherit;
+			}
+		</style>
+	</head>
+	<body>
+		<section class="vpdq__select">
+			<h1>vPDQ Video Hashing Test Page</h1>
+			<p>Select video files to hash. Each frame is hashed using both the <strong>refactored (src)</strong> and the <strong>Meta reference</strong> implementations. Results are compared side-by-side with Hamming distance to verify correctness.</p>
+
+			<div class="vpdq__control">
+				<label class="vpdq__label">Select Video(s):</label>
+				<input class="vpdq__input" type="file" id="vpdq-files" accept="video/*" multiple="multiple" />
+			</div>
+			<div class="vpdq__control">
+				<label class="vpdq__label">Seconds per Hash:</label>
+				<input class="vpdq__input" type="number" id="vpdq-interval" value="1.0" min="0.1" step="0.1" />
+			</div>
+			<div class="vpdq__control">
+				<label class="vpdq__label">Compare Videos:</label>
+				<input class="vpdq__input" type="checkbox" id="vpdq-compare" checked />
+			</div>
+			<div class="vpdq__control">
+				<input class="vpdq__submit" type="submit" id="vpdq-start" value="Generate Hashes" />
+			</div>
+		</section>
+		<section class="vpdq__results" id="vpdq-results"></section>
+
+		<script type="module">
+			// Refactored implementation (src/)
+			import { pdqHashFromRGBA as srcHash } from "../src/vpdq.ts";
+			import {
+				matchTwoHashBrute,
+				isMatch,
+				featuresToCppFormat,
+				featuresToJson,
+				VpdqFeature,
+				VPDQ_DISTANCE_THRESHOLD,
+				VPDQ_QUALITY_THRESHOLD,
+			} from "../src/vpdq.ts";
+
+			// Meta reference implementation
+			import { pdqHashFromRGBA as metaHash } from "../meta/pdqhashing.ts";
+			import { Hash256 as MetaHash256 } from "../meta/hash256.ts";
+
+			function tableRow(table, tag, items) {
+				const row = document.createElement("tr");
+				items.forEach(item => {
+					const cell = document.createElement(tag);
+					if (Array.isArray(item)) {
+						item.forEach(value => {
+							const div = document.createElement("div");
+							if (typeof value === "string" || typeof value === "number") {
+								div.textContent = value;
+							} else {
+								div.appendChild(value);
+							}
+							cell.appendChild(div);
+						});
+					} else {
+						cell.textContent = item;
+					}
+					row.appendChild(cell);
+				});
+				table.appendChild(row);
+			}
+
+			function formatTime(ms) {
+				return ms < 1000 ? ms.toFixed(1) + "ms" : (ms / 1000).toFixed(2) + "s";
+			}
+
+			function supportsWebCodecs() {
+				return typeof VideoFrame !== "undefined";
+			}
+
+			async function extractFrameWebCodecs(video) {
+				const frame = new VideoFrame(video, { timestamp: 0 });
+				const width = frame.displayWidth;
+				const height = frame.displayHeight;
+				const size = frame.allocationSize({ format: "RGBA" });
+				const buffer = new Uint8Array(size);
+				await frame.copyTo(buffer, { format: "RGBA" });
+				frame.close();
+				return { data: buffer, width, height };
+			}
+
+			function extractFrameCanvas(video, canvas, ctx) {
+				ctx.drawImage(video, 0, 0);
+				const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+				return { data: imageData.data, width: canvas.width, height: canvas.height };
+			}
+
+			async function hashVideo(videoUrl, secondsPerHash) {
+				const video = document.createElement("video");
+				video.crossOrigin = "anonymous";
+				video.muted = true;
+				video.preload = "auto";
+
+				await new Promise((resolve, reject) => {
+					video.onloadedmetadata = resolve;
+					video.onerror = () => reject(new Error("Failed to load video"));
+					video.src = videoUrl;
+				});
+
+				const useWebCodecs = supportsWebCodecs();
+				let canvas, ctx;
+				if (!useWebCodecs) {
+					canvas = document.createElement("canvas");
+					canvas.width = video.videoWidth;
+					canvas.height = video.videoHeight;
+					ctx = canvas.getContext("2d");
+				}
+
+				const frames = [];
+				const duration = video.duration;
+				let frameNumber = 0;
+
+				for (let timeStamp = 0; timeStamp < duration; timeStamp += secondsPerHash, frameNumber++) {
+					await new Promise(resolve => {
+						video.onseeked = resolve;
+						video.currentTime = timeStamp;
+					});
+
+					// Time the frame extraction
+					const extractStart = performance.now();
+					let frameData;
+					if (useWebCodecs) {
+						frameData = await extractFrameWebCodecs(video);
+					} else {
+						frameData = extractFrameCanvas(video, canvas, ctx);
+					}
+					const extractTime = performance.now() - extractStart;
+
+					// Hash with both implementations using the same RGBA data
+					const srcStart = performance.now();
+					const srcResult = srcHash(frameData.data, frameData.height, frameData.width);
+					const srcTime = performance.now() - srcStart;
+
+					const metaStart = performance.now();
+					const metaResult = metaHash(frameData.data, frameData.height, frameData.width);
+					const metaTime = performance.now() - metaStart;
+
+					// Compute Hamming distance between the two hashes
+					// They use different Hash256 classes, so compare via hex
+					const srcHex = srcResult.hash.toHexString();
+					const metaHex = metaResult.hash.toHexString();
+					let hamming = 0;
+					if (srcHex !== metaHex) {
+						// bit-level comparison via hex
+						for (let i = 0; i < 64; i++) {
+							const diff = parseInt(srcHex[i], 16) ^ parseInt(metaHex[i], 16);
+							hamming += ((diff >> 0) & 1) + ((diff >> 1) & 1) + ((diff >> 2) & 1) + ((diff >> 3) & 1);
+						}
+					}
+
+					frames.push({
+						frameNumber,
+						timeStamp,
+						extractTime,
+						extractMethod: useWebCodecs ? "WebCodecs" : "Canvas",
+						srcHash: srcHex,
+						srcQuality: srcResult.quality,
+						srcTime,
+						srcFeature: new VpdqFeature(srcResult.hash, frameNumber, srcResult.quality, timeStamp),
+						metaHash: metaHex,
+						metaQuality: metaResult.quality,
+						metaTime,
+						hamming,
+						match: srcHex === metaHex,
+					});
+				}
+
+				return frames;
+			}
+
+			document.addEventListener("DOMContentLoaded", () => {
+				const startBtn = document.getElementById("vpdq-start");
+
+				startBtn.addEventListener("click", async () => {
+					const filesInput = document.getElementById("vpdq-files");
+					const secondsPerHash = parseFloat(document.getElementById("vpdq-interval").value) || 1.0;
+					const doCompare = document.getElementById("vpdq-compare").checked;
+					const resultsEl = document.getElementById("vpdq-results");
+
+					const videos = Array.from(filesInput.files).filter(f => f.type.startsWith("video/"));
+					if (videos.length === 0) {
+						resultsEl.innerHTML = "<p>No video files selected.</p>";
+						return;
+					}
+
+					startBtn.disabled = true;
+					startBtn.value = "Processing...";
+
+					// progress
+					const wrap = document.createElement("div");
+					wrap.classList.add("vpdq__progress");
+					const bar = document.createElement("progress");
+					bar.setAttribute("max", 100);
+					bar.setAttribute("value", 0);
+					const progress = document.createElement("span");
+					progress.textContent = "0%";
+					const status = document.createElement("span");
+					wrap.replaceChildren(bar, progress, status);
+					resultsEl.replaceChildren(wrap);
+
+					const allResults = [];
+					const start = performance.now();
+
+					for (let i = 0; i < videos.length; i++) {
+						const file = videos[i];
+						status.textContent = `Hashing ${file.name}...`;
+
+						const url = URL.createObjectURL(file);
+						const hashStart = performance.now();
+
+						try {
+							const frames = await hashVideo(url, secondsPerHash);
+							const hashTime = performance.now() - hashStart;
+							const allMatch = frames.every(f => f.match);
+							const totalHamming = frames.reduce((sum, f) => sum + f.hamming, 0);
+
+							allResults.push({
+								file: file.name,
+								size: file.size,
+								frames,
+								hashTime,
+								frameCount: frames.length,
+								allMatch,
+								totalHamming,
+							});
+						} catch (err) {
+							allResults.push({
+								file: file.name,
+								size: file.size,
+								frames: null,
+								hashTime: 0,
+								frameCount: 0,
+								allMatch: false,
+								totalHamming: -1,
+								error: err.message,
+							});
+						} finally {
+							URL.revokeObjectURL(url);
+						}
+
+						const pct = Math.round(((i + 1) / videos.length) * 100);
+						bar.setAttribute("value", pct);
+						progress.textContent = pct + "%";
+					}
+
+					const totalTime = performance.now() - start;
+
+					// render results
+					const output = document.createElement("div");
+
+					// per-video results
+					for (const result of allResults) {
+						const section = document.createElement("div");
+						section.classList.add("vpdq__section");
+
+						const heading = document.createElement("h2");
+						heading.textContent = result.file;
+						section.appendChild(heading);
+
+						if (result.error) {
+							const err = document.createElement("p");
+							err.style.color = "red";
+							err.textContent = "Error: " + result.error;
+							section.appendChild(err);
+							output.appendChild(section);
+							continue;
+						}
+
+						// timing aggregates for this video
+						const totalExtractTime = result.frames.reduce((s, f) => s + f.extractTime, 0);
+						const totalSrcTime = result.frames.reduce((s, f) => s + f.srcTime, 0);
+						const totalMetaTime = result.frames.reduce((s, f) => s + f.metaTime, 0);
+						const avgExtractTime = result.frameCount > 0 ? totalExtractTime / result.frameCount : 0;
+						const avgSrcTime = result.frameCount > 0 ? totalSrcTime / result.frameCount : 0;
+						const avgMetaTime = result.frameCount > 0 ? totalMetaTime / result.frameCount : 0;
+						const speedRatio = totalMetaTime > 0 ? totalMetaTime / totalSrcTime : 1;
+						const extractMethod = result.frames.length > 0 ? result.frames[0].extractMethod : "N/A";
+
+						// summary
+						const summary = document.createElement("p");
+						const matchStatus = result.allMatch
+							? '<span class="vpdq__match-yes">ALL MATCH</span>'
+							: `<span class="vpdq__match-no">MISMATCH (total Hamming: ${result.totalHamming})</span>`;
+						summary.innerHTML = `<strong>Frames:</strong> ${result.frameCount} | `
+							+ `<strong>Interval:</strong> ${secondsPerHash}s | `
+							+ `<strong>Extraction:</strong> ${extractMethod} | `
+							+ `<strong>Src vs Meta:</strong> ${matchStatus}`;
+						section.appendChild(summary);
+
+						// per-video performance summary
+						const perfSummary = document.createElement("p");
+						const ratioClass = speedRatio >= 1 ? "vpdq__faster" : "vpdq__slower";
+						const ratioLabel = speedRatio >= 1
+							? `Src is <strong>${speedRatio.toFixed(2)}x faster</strong>`
+							: `Meta is <strong>${(1/speedRatio).toFixed(2)}x faster</strong>`;
+						perfSummary.innerHTML = `<strong>Extract Total:</strong> ${formatTime(totalExtractTime)} (${formatTime(avgExtractTime)}/frame) | `
+							+ `<strong>Src Hash:</strong> ${formatTime(totalSrcTime)} (${formatTime(avgSrcTime)}/frame) | `
+							+ `<strong>Meta Hash:</strong> ${formatTime(totalMetaTime)} (${formatTime(avgMetaTime)}/frame) | `
+							+ `<span class="${ratioClass}">${ratioLabel}</span>`;
+						section.appendChild(perfSummary);
+
+						// frame comparison table
+						const table = document.createElement("table");
+						tableRow(table, "th", [
+							"Frame", "Timestamp", "Extract",
+							"Src Quality", "Src Hash",
+							"Meta Quality", "Meta Hash",
+							"Diff", "Src Hash Time", "Meta Hash Time", "Hash Ratio",
+						]);
+
+						for (const f of result.frames) {
+							const srcSpan = document.createElement("span");
+							srcSpan.classList.add("vpdq__hash");
+							srcSpan.textContent = f.srcHash;
+
+							const metaSpan = document.createElement("span");
+							metaSpan.classList.add("vpdq__hash");
+							metaSpan.textContent = f.metaHash;
+
+							const diffSpan = document.createElement("span");
+							diffSpan.textContent = f.hamming + " / 256";
+							diffSpan.className = f.hamming === 0 ? "vpdq__diff-0" : "vpdq__diff-nonzero";
+
+							const frameRatio = f.srcTime > 0 ? f.metaTime / f.srcTime : 1;
+							const ratioSpan = document.createElement("span");
+							ratioSpan.textContent = frameRatio.toFixed(2) + "x";
+							ratioSpan.className = frameRatio >= 1 ? "vpdq__faster" : "vpdq__slower";
+
+							tableRow(table, "td", [
+								f.frameNumber.toString(),
+								f.timeStamp.toFixed(2) + "s",
+								f.extractTime.toFixed(2) + "ms",
+								f.srcQuality.toString(),
+								[srcSpan],
+								f.metaQuality.toString(),
+								[metaSpan],
+								[diffSpan],
+								f.srcTime.toFixed(2) + "ms",
+								f.metaTime.toFixed(2) + "ms",
+								[ratioSpan],
+							]);
+						}
+						section.appendChild(table);
+
+						// serialization preview (from src features)
+						if (result.frames.length > 0) {
+							const srcFeatures = result.frames.map(f => f.srcFeature);
+							const details = document.createElement("details");
+							const summaryEl = document.createElement("summary");
+							summaryEl.textContent = "Serialized Output (Src)";
+							details.appendChild(summaryEl);
+
+							const cppLabel = document.createElement("h4");
+							cppLabel.textContent = "C++ Format";
+							details.appendChild(cppLabel);
+							const cppPre = document.createElement("pre");
+							cppPre.textContent = featuresToCppFormat(srcFeatures);
+							cppPre.style.fontSize = "11px";
+							cppPre.style.overflow = "auto";
+							details.appendChild(cppPre);
+
+							const jsonLabel = document.createElement("h4");
+							jsonLabel.textContent = "JSON Format";
+							details.appendChild(jsonLabel);
+							const jsonPre = document.createElement("pre");
+							jsonPre.textContent = featuresToJson(srcFeatures, 2);
+							jsonPre.style.fontSize = "11px";
+							jsonPre.style.overflow = "auto";
+							details.appendChild(jsonPre);
+
+							section.appendChild(details);
+						}
+
+						output.appendChild(section);
+					}
+
+					// video-to-video comparison
+					if (doCompare && allResults.length >= 2) {
+						const compSection = document.createElement("div");
+						compSection.classList.add("vpdq__section");
+						const compHeading = document.createElement("h2");
+						compHeading.textContent = "Video Comparisons (Src Implementation)";
+						compSection.appendChild(compHeading);
+
+						const compTable = document.createElement("table");
+						tableRow(compTable, "th", ["Video A", "Video B", "Query Match %", "Target Match %", "Match?"]);
+
+						for (let i = 0; i < allResults.length; i++) {
+							for (let j = i + 1; j < allResults.length; j++) {
+								const a = allResults[i];
+								const b = allResults[j];
+								if (!a.frames || !b.frames) continue;
+
+								const aFeatures = a.frames.map(f => f.srcFeature);
+								const bFeatures = b.frames.map(f => f.srcFeature);
+
+								const matchResult = matchTwoHashBrute(aFeatures, bFeatures, VPDQ_DISTANCE_THRESHOLD, VPDQ_QUALITY_THRESHOLD);
+								const matchCheck = isMatch(aFeatures, bFeatures);
+
+								const matchEl = document.createElement("span");
+								matchEl.textContent = matchCheck.isMatch ? "YES" : "NO";
+								matchEl.className = matchCheck.isMatch ? "vpdq__match-yes" : "vpdq__match-no";
+
+								tableRow(compTable, "td", [
+									a.file,
+									b.file,
+									matchResult.queryMatchPercent.toFixed(1) + "%",
+									matchResult.comparedMatchPercent.toFixed(1) + "%",
+									[matchEl],
+								]);
+							}
+						}
+						compSection.appendChild(compTable);
+
+						// self-match
+						const selfHeading = document.createElement("h3");
+						selfHeading.textContent = "Self-Match (Sanity Check)";
+						compSection.appendChild(selfHeading);
+
+						const selfTable = document.createElement("table");
+						tableRow(selfTable, "th", ["Video", "Query Match %", "Target Match %"]);
+						for (const r of allResults) {
+							if (!r.frames) continue;
+							const features = r.frames.map(f => f.srcFeature);
+							const selfResult = matchTwoHashBrute(features, features, VPDQ_DISTANCE_THRESHOLD, VPDQ_QUALITY_THRESHOLD);
+							tableRow(selfTable, "td", [
+								r.file,
+								selfResult.queryMatchPercent.toFixed(1) + "%",
+								selfResult.comparedMatchPercent.toFixed(1) + "%",
+							]);
+						}
+						compSection.appendChild(selfTable);
+						output.appendChild(compSection);
+					}
+
+					// performance comparison
+					const perfSection = document.createElement("div");
+					perfSection.classList.add("vpdq__section");
+					const perfHeading = document.createElement("h2");
+					perfHeading.textContent = "Performance Comparison";
+					perfSection.appendChild(perfHeading);
+
+					const extractMethodLabel = allResults.length > 0 && allResults[0].frames && allResults[0].frames.length > 0
+						? allResults[0].frames[0].extractMethod : "N/A";
+					const methodNote = document.createElement("p");
+					methodNote.innerHTML = `<strong>Frame extraction method:</strong> ${extractMethodLabel}`;
+					perfSection.appendChild(methodNote);
+
+					const perfTable = document.createElement("table");
+					perfTable.classList.add("vpdq__perf-table");
+					tableRow(perfTable, "th", ["Video", "Frames", "Extract Total", "Src Hash Total", "Meta Hash Total", "Extract Avg", "Src Avg", "Meta Avg", "Hash Ratio"]);
+
+					let grandExtractTime = 0;
+					let grandSrcTime = 0;
+					let grandMetaTime = 0;
+					let grandFrames = 0;
+
+					for (const r of allResults) {
+						if (!r.frames) continue;
+						const extractTotal = r.frames.reduce((s, f) => s + f.extractTime, 0);
+						const srcTotal = r.frames.reduce((s, f) => s + f.srcTime, 0);
+						const metaTotal = r.frames.reduce((s, f) => s + f.metaTime, 0);
+						const extractAvg = r.frameCount > 0 ? extractTotal / r.frameCount : 0;
+						const srcAvg = r.frameCount > 0 ? srcTotal / r.frameCount : 0;
+						const metaAvg = r.frameCount > 0 ? metaTotal / r.frameCount : 0;
+						const ratio = srcTotal > 0 ? metaTotal / srcTotal : 1;
+
+						grandExtractTime += extractTotal;
+						grandSrcTime += srcTotal;
+						grandMetaTime += metaTotal;
+						grandFrames += r.frameCount;
+
+						const ratioSpan = document.createElement("span");
+						ratioSpan.className = ratio >= 1 ? "vpdq__faster" : "vpdq__slower";
+						ratioSpan.textContent = ratio >= 1
+							? ratio.toFixed(2) + "x (Src faster)"
+							: (1 / ratio).toFixed(2) + "x (Meta faster)";
+
+						tableRow(perfTable, "td", [
+							r.file,
+							r.frameCount.toString(),
+							formatTime(extractTotal),
+							formatTime(srcTotal),
+							formatTime(metaTotal),
+							formatTime(extractAvg),
+							formatTime(srcAvg),
+							formatTime(metaAvg),
+							[ratioSpan],
+						]);
+					}
+
+					// grand totals row
+					if (allResults.length > 1) {
+						const grandRatio = grandSrcTime > 0 ? grandMetaTime / grandSrcTime : 1;
+						const grandRatioSpan = document.createElement("span");
+						grandRatioSpan.className = grandRatio >= 1 ? "vpdq__faster" : "vpdq__slower";
+						grandRatioSpan.style.fontWeight = "bold";
+						grandRatioSpan.textContent = grandRatio >= 1
+							? grandRatio.toFixed(2) + "x (Src faster)"
+							: (1 / grandRatio).toFixed(2) + "x (Meta faster)";
+
+						const totalRow = document.createElement("tr");
+						totalRow.style.fontWeight = "bold";
+						totalRow.style.borderTop = "2px solid #000";
+						const cells = [
+							"TOTAL",
+							grandFrames.toString(),
+							formatTime(grandExtractTime),
+							formatTime(grandSrcTime),
+							formatTime(grandMetaTime),
+							grandFrames > 0 ? formatTime(grandExtractTime / grandFrames) : "-",
+							grandFrames > 0 ? formatTime(grandSrcTime / grandFrames) : "-",
+							grandFrames > 0 ? formatTime(grandMetaTime / grandFrames) : "-",
+						];
+						cells.forEach(text => {
+							const td = document.createElement("td");
+							td.textContent = text;
+							totalRow.appendChild(td);
+						});
+						const ratioTd = document.createElement("td");
+						ratioTd.appendChild(grandRatioSpan);
+						totalRow.appendChild(ratioTd);
+						perfTable.appendChild(totalRow);
+					}
+
+					perfSection.appendChild(perfTable);
+					output.appendChild(perfSection);
+
+					// overall summary
+					const totals = document.createElement("div");
+					totals.classList.add("vpdq__section");
+					const totalsHeading = document.createElement("h2");
+					totalsHeading.textContent = "Summary";
+					totals.appendChild(totalsHeading);
+
+					const allMatch = allResults.every(r => r.allMatch);
+					const totalHamming = allResults.reduce((sum, r) => sum + (r.totalHamming >= 0 ? r.totalHamming : 0), 0);
+
+					const totalP = document.createElement("p");
+					const overallMatch = allMatch
+						? '<span class="vpdq__match-yes">ALL FRAMES MATCH</span>'
+						: `<span class="vpdq__match-no">MISMATCHES DETECTED (total Hamming: ${totalHamming})</span>`;
+					totalP.innerHTML = `<strong>Videos:</strong> ${allResults.length} | `
+						+ `<strong>Total Frames:</strong> ${grandFrames} | `
+						+ `<strong>Total Time:</strong> ${formatTime(totalTime)} | `
+						+ `<strong>Overall:</strong> ${overallMatch}`;
+					totals.appendChild(totalP);
+					output.appendChild(totals);
+
+					resultsEl.replaceChildren(output);
+					startBtn.disabled = false;
+					startBtn.value = "Generate Hashes";
+				});
+			});
+		</script>
+	</body>
+</html>

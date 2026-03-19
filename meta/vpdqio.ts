@@ -6,7 +6,7 @@
  * 2. Python/JSON compact format: JSON array of "hexHash,quality,timestamp" strings
  */
 
-import { Hash256 } from "../hash256";
+import { Hash256 } from "./hash256";
 import { VpdqFeature } from "./vpdqTypes";
 
 const TIMESTAMP_PRECISION = 3;

@@ -1,20 +1,24 @@
-
 /**
- * Rescale function for resizing image data.
- * The function takes the original width and height of the image, the target block size, and the pixel data (either as a number array or a Uint8Array).
- * It returns a Uint8Array containing the rescaled image data.
- * The rescaling is done by picking the middle pixel in each block of the original image.
+ * Downsamples an image by center-point sampling.
  */
-export default (width: number, height: number, block: number, data: number[] | Uint8Array): Uint8Array => {
-	const scaled = new Uint8Array(block * block),
-		halfwidth = width / block / 2,
-		halfheight = height / block / 2; // for picking the middle pixel in a block
-	for (let i = 0; i < block; i++) {
-		const x = Math.round((i * width) / block + halfwidth);
-		for (let j = 0; j < block; j++) {
-			const y = Math.round((j * height) / block + halfheight);
-			scaled[(j * block) + i] = data[(y * width) + x];
+function decimateFloat(input: Float32Array, inNumRows: number, inNumCols: number, outNumRows: number, outNumCols: number): Float32Array {
+	// Precompute source column indices
+	const colMap = new Int32Array(outNumCols);
+	for (let outj = 0; outj < outNumCols; outj++) {
+		colMap[outj] = ((outj + 0.5) * inNumCols / outNumCols) | 0;
+	}
+
+	const output = new Float32Array(outNumRows * outNumCols);
+	for (let outi = 0; outi < outNumRows; outi++) {
+		const srcRowOff = (((outi + 0.5) * inNumRows / outNumRows) | 0) * inNumCols;
+		const dstRowOff = outi * outNumCols;
+		for (let outj = 0; outj < outNumCols; outj++) {
+			output[dstRowOff + outj] = input[srcRowOff + colMap[outj]];
 		}
 	}
-	return scaled;
-};
+	return output;
+}
+
+export default decimateFloat;
+
+export { decimateFloat };

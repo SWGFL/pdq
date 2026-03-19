@@ -6,8 +6,7 @@
 <body>
 	<script type="module">
 		import pdq from "../../src/pdq.ts";
-		import {
-			hashVideoUrl,
+		import vpdq, {
 			hashFrames,
 			pruneFrames,
 			matchTwoHashBrute,
@@ -17,12 +16,12 @@
 			featuresFromCppFormat,
 			featuresToJson,
 			featuresFromJson,
-		} from "../../src/vpdq/index.ts";
+		} from "../../src/vpdq.ts";
 
 		// Expose everything to the window for Playwright to call
 		window.__pdq = pdq;
 		window.__vpdq = {
-			hashVideoUrl,
+			hashVideoUrl: vpdq,
 			hashFrames,
 			pruneFrames,
 			matchTwoHashBrute,

@@ -1,46 +1,68 @@
 import { describe, it, expect } from "vitest";
-import jarosz from "../src/jarosz-filter";
-import { variance } from "./helpers";
+import { jaroszFilterFloat, computeJaroszFilterWindowSize } from "../src/jarosz-filter";
+
+function variance(data: Float32Array): number {
+	let sum = 0;
+	for (let i = 0; i < data.length; i++) sum += data[i];
+	const mean = sum / data.length;
+	let v = 0;
+	for (let i = 0; i < data.length; i++) v += (data[i] - mean) ** 2;
+	return v / data.length;
+}
 
 describe("jarosz filter", () => {
 	it("leaves uniform data approximately unchanged", () => {
-		const data = Array(64).fill(128);
-		const result = jarosz(data, 8, 8, 2);
-		result.forEach(val => {
-			expect(val).toBeCloseTo(128, 0);
-		});
+		const size = 256;
+		const data = new Float32Array(size * size).fill(128);
+		const buffer2 = new Float32Array(size * size);
+		const win = computeJaroszFilterWindowSize(size, 64);
+		jaroszFilterFloat(data, buffer2, size, size, win, win, 2);
+		for (let i = 0; i < data.length; i++) {
+			expect(data[i]).toBeCloseTo(128, 0);
+		}
 	});
 
-	it("returns the same array reference (mutates in-place)", () => {
-		const data = Array(64).fill(128);
-		const result = jarosz(data, 8, 8, 2);
-		expect(result).toBe(data);
+	it("mutates buffer1 in-place", () => {
+		const size = 256;
+		const data = new Float32Array(size * size).fill(128);
+		const buffer2 = new Float32Array(size * size);
+		const win = computeJaroszFilterWindowSize(size, 64);
+		jaroszFilterFloat(data, buffer2, size, size, win, win, 2);
+		expect(data).toBeInstanceOf(Float32Array);
 	});
 
-	it("reduces variance of noisy data with large image", () => {
-		// need large enough image for the window calc to produce a non-zero radius
-		const size = 128;
-		const data = Array.from({ length: size * size }, (_, i) => (i % 2 === 0) ? 200 : 50);
-		const originalVariance = variance([...data]);
-		jarosz(data, size, size, 2);
-		const filteredVariance = variance(data);
-		expect(filteredVariance).toBeLessThan(originalVariance);
+	it("reduces variance of noisy data", () => {
+		const size = 256;
+		const data = new Float32Array(size * size);
+		for (let i = 0; i < data.length; i++) data[i] = (i % 2 === 0) ? 200 : 50;
+		const originalVariance = variance(new Float32Array(data));
+		const buffer2 = new Float32Array(size * size);
+		const win = computeJaroszFilterWindowSize(size, 64);
+		jaroszFilterFloat(data, buffer2, size, size, win, win, 2);
+		expect(variance(data)).toBeLessThan(originalVariance);
 	});
 
 	it("more passes produces smoother output", () => {
-		const size = 128;
-		const data1 = Array.from({ length: size * size }, (_, i) => (i % 2 === 0) ? 200 : 50);
-		const data2 = [...data1];
-		jarosz(data1, size, size, 1);
-		jarosz(data2, size, size, 2);
+		const size = 512;
+		const data1 = new Float32Array(size * size);
+		for (let i = 0; i < data1.length; i++) data1[i] = (i % 2 === 0) ? 200 : 50;
+		const data2 = new Float32Array(data1);
+		const buf1 = new Float32Array(size * size);
+		const buf2 = new Float32Array(size * size);
+		const win = computeJaroszFilterWindowSize(size, 64);
+		jaroszFilterFloat(data1, buf1, size, size, win, win, 1);
+		jaroszFilterFloat(data2, buf2, size, size, win, win, 2);
 		expect(variance(data2)).toBeLessThan(variance(data1));
 	});
 
 	it("works with realistic large image data", () => {
-		const size = 128;
-		const data = Array.from({ length: size * size }, (_, i) => Math.round(Math.sin(i / 100) * 100 + 128));
-		const originalVariance = variance([...data]);
-		jarosz(data, size, size, 2);
+		const size = 256;
+		const data = new Float32Array(size * size);
+		for (let i = 0; i < data.length; i++) data[i] = Math.sin(i / 100) * 100 + 128;
+		const originalVariance = variance(new Float32Array(data));
+		const buffer2 = new Float32Array(size * size);
+		const win = computeJaroszFilterWindowSize(size, 64);
+		jaroszFilterFloat(data, buffer2, size, size, win, win, 2);
 		expect(variance(data)).toBeLessThan(originalVariance);
 	});
 });

@@ -1,11 +1,12 @@
-import jarosz from "./jarosz-filter";
+import { jaroszFilterFloat, computeJaroszFilterWindowSize } from "./jarosz-filter";
 import render, { renderHash } from "./render";
 import matrix from "./matrix";
-import hash from "./hash-dct";
-import luminance from "./luminance";
-import rescale from "./rescale";
+import { pdqBuffer16x16ToBits, torben } from "./hash-dct";
+import { fillFloatLumaFromRGBA } from "./luminance";
+import { decimateFloat } from "./rescale";
 import dct from "./dct";
 import quality from "./quality";
+import { Hash256 } from "./hash256";
 
 export interface PdqConfig {
 	debug?: boolean;
@@ -20,130 +21,181 @@ export interface PdqResult {
 	quality: number;
 }
 
+export interface PdqHashResult {
+	hash: Hash256;
+	quality: number;
+}
+
+const PDQ_NUM_JAROSZ_XY_PASSES = 2;
+const MIN_HASHABLE_DIM = 5;
+
+// Scratch buffer cache keyed by pixel count (numRows * numCols)
+let cachedSize = 0;
+let cachedBuf1: Float32Array | null = null;
+let cachedBuf2: Float32Array | null = null;
+
+function getScratchBuffers(n: number): [Float32Array, Float32Array] {
+	if (n !== cachedSize || !cachedBuf1 || !cachedBuf2) {
+		cachedSize = n;
+		cachedBuf1 = new Float32Array(n);
+		cachedBuf2 = new Float32Array(n);
+	}
+	return [cachedBuf1, cachedBuf2];
+}
+
+/**
+ * Hash RGBA pixel data to a 256-bit perceptual hash.
+ */
+function pdqHashFromRGBA(rgbaData: Uint8Array | Uint8ClampedArray, numRows: number, numCols: number): PdqHashResult {
+	if (numRows < MIN_HASHABLE_DIM || numCols < MIN_HASHABLE_DIM) {
+		return { hash: new Hash256(), quality: 0 };
+	}
+
+	const luma = fillFloatLumaFromRGBA(rgbaData, numRows, numCols);
+	return pdqHash256FromFloatLuma(luma, numRows, numCols);
+}
+
+/**
+ * Hash pre-computed luminance data to a 256-bit perceptual hash.
+ * Scratch buffers are cached so repeated calls at the same resolution
+ * (e.g. video frames) avoid re-allocation.
+ */
+function pdqHash256FromFloatLuma(lumaBuffer: Float32Array, numRows: number, numCols: number): PdqHashResult {
+	if (numRows < MIN_HASHABLE_DIM || numCols < MIN_HASHABLE_DIM) {
+		return { hash: new Hash256(), quality: 0 };
+	}
+
+	let buffer64x64: Float32Array;
+
+	if (numRows === 64 && numCols === 64) {
+		buffer64x64 = new Float32Array(lumaBuffer);
+	} else {
+		const n = numRows * numCols;
+		const [buffer1, buffer2] = getScratchBuffers(n);
+		buffer1.set(lumaBuffer);
+
+		const windowSizeAlongRows = computeJaroszFilterWindowSize(numCols, 64);
+		const windowSizeAlongCols = computeJaroszFilterWindowSize(numRows, 64);
+
+		jaroszFilterFloat(
+			buffer1,
+			buffer2,
+			numRows,
+			numCols,
+			windowSizeAlongRows,
+			windowSizeAlongCols,
+			PDQ_NUM_JAROSZ_XY_PASSES
+		);
+
+		buffer64x64 = decimateFloat(buffer1, numRows, numCols, 64, 64);
+	}
+
+	const q = quality(64, buffer64x64);
+	const dctOutput = dct(buffer64x64);
+	const hash = pdqBuffer16x16ToBits(dctOutput);
+
+	return { hash, quality: q };
+}
+
 /**
  * Perceptual hash (PDQ) implementation for image similarity comparison.
- * The function takes an HTMLCanvasElement and an optional configuration object, and returns a Promise that resolves to a PdqResult object containing the hash and quality score.
- * The process involves several steps: extracting image data, converting it to luminance, applying a Jarosz box blur filter, rescaling the image to a specified block size, calculating the quality of the block, generating a 2D discrete cosine transform (DCT), optionally applying dihedral transformations to the DCT, and finally computing the hash from the DCT values.
- * The resulting hash can be used for comparing images based on their perceptual similarity, while the quality score provides a heuristic measure of the image's detail and sharpness.
+ * Accepts an HTMLCanvasElement and optional config for debug/transforms.
  */
 export default (canvas: HTMLCanvasElement, config?: PdqConfig): Promise<PdqResult> => {
 
-	// merge default config
 	const opts = Object.assign({
 		debug: false,
-		passes: 2,
+		passes: PDQ_NUM_JAROSZ_XY_PASSES,
 		block: 64,
-		transform: false, // whether to generate dihedral transformation hashes
+		transform: false,
 	}, config);
 
-	// assign variables
 	const block = opts.block,
 		debug = opts.debug,
 		width = canvas.width,
 		height = canvas.height;
-	let q: number;
 
-	// extract the image data
-	return new Promise<Uint8ClampedArray>(success => {
+	if (debug) {
+		document.body.appendChild(canvas);
+	}
 
-		// debug
-		if (debug) {
-			document.body.appendChild(canvas);
+	return new Promise<PdqResult>(resolve => {
+
+		const imgdata = canvas.getContext("2d")!.getImageData(0, 0, width, height).data;
+
+		// Fast path: no debug rendering or dihedral transforms needed
+		if (!debug && !opts.transform) {
+			const { hash, quality: q } = pdqHashFromRGBA(imgdata, height, width);
+			resolve({ type: "pdq", hash: hash.toHexString(), quality: q });
+			return;
 		}
 
-		// Return the image data.
-		success(canvas.getContext("2d")!.getImageData(0, 0, width, height).data);
-	})
+		// Debug/transform path: need intermediate results for rendering
+		const luma = fillFloatLumaFromRGBA(imgdata, height, width);
 
-		// greyscale the image
-		.then(data => {
-			const grey = luminance(data);
+		if (debug) {
+			render(width, height, luma);
+		}
 
-			// debug
+		const buffer2 = new Float32Array(height * width);
+		const windowSizeAlongRows = computeJaroszFilterWindowSize(width, block);
+		const windowSizeAlongCols = computeJaroszFilterWindowSize(height, block);
+		jaroszFilterFloat(luma, buffer2, height, width, windowSizeAlongRows, windowSizeAlongCols, opts.passes);
+
+		if (debug) {
+			render(width, height, luma);
+		}
+
+		const scaled = decimateFloat(luma, height, width, block, block);
+
+		if (debug) {
+			render(block, block, scaled);
+		}
+
+		const q = quality(block, scaled);
+		const dctOutput = dct(scaled);
+
+		if (debug) {
+			console.log(dctOutput);
+		}
+
+		// generate dihedral transforms if requested
+		const dcts: Record<string, Float64Array> = { original: dctOutput };
+		if (opts.transform) {
+			dcts.rot90 = matrix.rotate(dctOutput) as Float64Array;
+			dcts.flip = matrix.flip(dctOutput) as Float64Array;
+			dcts.rot180 = matrix.rotate(dcts.rot90) as Float64Array;
+			dcts.rot270 = matrix.rotate(dcts.rot180) as Float64Array;
+			dcts.fliprot90 = matrix.rotate(dcts.flip) as Float64Array;
+			dcts.fliprot180 = matrix.rotate(dcts.fliprot90) as Float64Array;
+			dcts.fliprot270 = matrix.rotate(dcts.fliprot180) as Float64Array;
+		}
+
+		if (debug) {
+			console.log(dcts);
+		}
+
+		const hashes: string[] = [];
+		for (const item in dcts) {
+			const hash = pdqBuffer16x16ToBits(dcts[item]);
+			const hex = hash.toHexString();
+			hashes.push(hex);
+
 			if (debug) {
-				render(width, height, grey);
+				renderHash(hash);
 			}
+		}
 
-			// Return the luminance data.
-			return grey;
-		})
+		resolve({ type: "pdq", hash: opts.transform ? hashes : hashes[0], quality: q });
+	});
+};
 
-		// apply a two-pass jarosz box blur filter
-		.then(data => {
-			const output = jarosz(data, width, height, opts.passes);
+export { default as dct64To16 } from "./dct";
 
-			// debug
-			if (debug) {
-				render(width, height, output);
-			}
-			return output;
-		})
-
-		// rescale the image to 64x64
-		.then(data => {
-
-			// rescale
-			const scaled = rescale(width, height, block, data);
-
-			// debug
-			if (debug) {
-				render(block, block, scaled);
-			}
-			return scaled;
-		})
-
-		// generate quality metric
-		.then(data => {
-			q = quality(block, data);
-			return data;
-		})
-
-		// generate 2D discrete cosine transform
-		.then(data => {
-			const buffer16x16 = dct(data);
-
-			// debug
-			if (debug) {
-				console.log(buffer16x16);
-			}
-			return buffer16x16;
-		})
-
-		// rotate and flip DCTs
-		.then(buffer => {
-			const dcts: Record<string, number[]> = { original: buffer };
-			if (opts.transform) {
-				dcts.rot90 = matrix.rotate(buffer);
-				dcts.flip = matrix.flip(buffer);
-				dcts.rot180 = matrix.rotate(dcts.rot90);
-				dcts.rot270 = matrix.rotate(dcts.rot180);
-				dcts.fliprot90 = matrix.rotate(dcts.flip);
-				dcts.fliprot180 = matrix.rotate(dcts.fliprot90);
-				dcts.fliprot270 = matrix.rotate(dcts.fliprot180);
-			}
-
-			// debug
-			if (debug) {
-				console.log(dcts);
-			}
-			return dcts;
-		})
-
-		// compute hash from DCTs
-		.then(dcts => {
-			const hashes: string[] = [];
-
-			// generate hashes
-			for (const item in dcts) {
-				const result = hash.computeDct(dcts[item]),
-					hex = hash.toHex(result);
-				hashes.push(hex);
-
-				// debug
-				if (debug) {
-					renderHash(result);
-				}
-			}
-			return { type: "pdq" as const, hash: opts.transform ? hashes : hashes[0], quality: q };
-		});
+export {
+	pdqHashFromRGBA,
+	pdqHash256FromFloatLuma,
+	pdqBuffer16x16ToBits,
+	torben,
+	MIN_HASHABLE_DIM,
 };

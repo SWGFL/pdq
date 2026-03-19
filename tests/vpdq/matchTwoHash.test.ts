@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { matchTwoHashBrute, isMatch } from "../../src/vpdq/matchTwoHash";
 import { VpdqFeature, VpdqMatchResult } from "../../src/vpdq/vpdqTypes";
-import { Hash256 } from "../../src/vpdq/hash256";
+import { Hash256 } from "../../src/hash256";
 
 function makeFeature(hexChar: string, quality: number): VpdqFeature {
 	return new VpdqFeature(

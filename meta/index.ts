@@ -5,7 +5,7 @@
  * image hashing algorithm on video frames to measure video similarity.
  */
 
-export { Hash256 } from "../hash256";
+export { Hash256 } from "./hash256";
 
 export { pdqHashFromRGBA, pdqHash256FromFloatLuma } from "./pdqhashing";
 export type { PdqHashResult } from "./pdqhashing";
@@ -40,6 +40,7 @@ export {
 
 export {
   hashFrames,
+  hashVideoUrl,
   pruneFrames,
 } from "./vpdqHasher";
-export type { FrameData } from "./vpdqHasher";
+export type { FrameData, HashVideoOptions } from "./vpdqHasher";

@@ -1,22 +1,68 @@
 /**
  * Hashing functions for perceptual hashing.
- * The computeDct function computes the discrete cosine transform (DCT) of a block of pixel data and generates a hash based on the DCT values.
- * The toHex function converts a Uint8Array of bytes into a hexadecimal string representation.
- * The computeDct function works by first calculating the median value of the DCT coefficients, and then creating a hash where each bit is set based on whether the corresponding DCT coefficient is greater than the median.
- * The resulting hash is a 32-byte (256-bit) value that can be used for comparing images based on their perceptual similarity.
+ * Converts DCT coefficients to a 256-bit hash using median thresholding.
  */
-export default {
-	computeDct: (dct: number[]): Uint8Array => {
+import { Hash256 } from "./hash256";
 
-		// get the middle value
-		const median = [...dct].sort((a, b) => a - b)[127];
+/**
+ * Torben's O(n) median finder — does not modify the input array.
+ */
+function torben(m: Float32Array | Float64Array | number[], n: number): number {
+	let min = m[0];
+	let max = m[0];
+	for (let i = 1; i < n; i++) {
+		if (m[i] < min) min = m[i];
+		if (m[i] > max) max = m[i];
+	}
 
-		// extract bits
-		const hash = new Uint8Array(32);
-		dct.forEach((value, i) => {
-			hash[Math.floor(i / 8)] |= (value > median ? 1 : 0) << (i % 8);
-		});
-		return hash;
-	},
-	toHex: (bytes: Uint8Array): string => Array.from(bytes, byte => ("0" + (byte & 0xFF).toString(16)).slice(-2)).reverse().join(""),
-};
+	while (true) {
+		const guess = (min + max) / 2;
+		let less = 0;
+		let greater = 0;
+		let equal = 0;
+		let maxltguess = min;
+		let mingtguess = max;
+
+		for (let i = 0; i < n; i++) {
+			if (m[i] < guess) {
+				less++;
+				if (m[i] > maxltguess) maxltguess = m[i];
+			} else if (m[i] > guess) {
+				greater++;
+				if (m[i] < mingtguess) mingtguess = m[i];
+			} else {
+				equal++;
+			}
+		}
+
+		if (less <= (n + 1) / 2 && greater <= (n + 1) / 2) {
+			if (less >= (n + 1) / 2) return maxltguess;
+			if (less + equal >= (n + 1) / 2) return guess;
+			return mingtguess;
+		} else if (less > greater) {
+			max = maxltguess;
+		} else {
+			min = mingtguess;
+		}
+	}
+}
+
+/**
+ * Convert DCT coefficients to a 256-bit Hash256 by thresholding at the median.
+ */
+function pdqBuffer16x16ToBits(dctOutput16x16: Float64Array): Hash256 {
+	const dctMedian = torben(dctOutput16x16, 256);
+	const hash = new Hash256();
+	for (let i = 0; i < 16; i++) {
+		for (let j = 0; j < 16; j++) {
+			if (dctOutput16x16[i * 16 + j] > dctMedian) {
+				hash.setBit(i * 16 + j);
+			}
+		}
+	}
+	return hash;
+}
+
+export default { pdqBuffer16x16ToBits, torben };
+
+export { pdqBuffer16x16ToBits, torben };

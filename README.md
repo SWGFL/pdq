@@ -324,10 +324,12 @@ Standalone PDQ implementation that works directly on RGBA data without requiring
 
 #### `src/vpdq/vpdqHasher.ts`
 
+Uses the [WebCodecs API](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API) (`VideoFrame`) for efficient pixel data extraction when available, falling back to canvas-based extraction in older browsers. WebCodecs avoids the `drawImage` + `getImageData` round-trip by copying RGBA data directly from the video frame.
+
 | Function | Description | Output |
 |----------|-------------|--------|
 | `hashFrames(frames)` | Hash an array of pre-extracted RGBA frames. Each frame needs `data`, `width`, `height`, `timestamp`. | `VpdqFeature[]` with sequential frame numbers |
-| `hashVideoUrl(url, options?)` | Hash a video in the browser using `HTMLVideoElement` + Canvas. Seeks at `secondsPerHash` intervals (default: 1.0). | `Promise<VpdqFeature[]>` |
+| `hashVideoUrl(url, options?)` | Hash a video in the browser. Seeks at `secondsPerHash` intervals (default: 1.0). Set `pruneDistance` to skip frames similar to the last retained one during extraction. | `Promise<VpdqFeature[]>` |
 | `pruneFrames(features, pruneDist)` | Remove consecutive frames within `pruneDist` Hamming distance of the last retained frame. | `VpdqFeature[]` (reduced set) |
 
 #### `src/vpdq/matchTwoHash.ts`

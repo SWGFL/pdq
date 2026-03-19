@@ -6,7 +6,7 @@ import {
 	dct64To16,
 	MIN_HASHABLE_DIM,
 } from "../../src/vpdq/pdqhashing";
-import { Hash256 } from "../../src/vpdq/hash256";
+import { Hash256 } from "../../src/hash256";
 import { makeUniformRGBA, makeGradientRGBA } from "../helpers";
 
 describe("torben (median finder)", () => {
