@@ -1,4 +1,12 @@
-function boxBlurRows(input, output, width, height, radius) {
+/**
+ * Jarosz filter implementation for image processing.
+ * The Jarosz filter is a fast approximation of a Gaussian blur, which is commonly used in image processing to reduce noise and detail.
+ * The filter works by applying a box blur in two passes: first horizontally (rows) and then vertically (columns).
+ * The radius of the blur can be adjusted to control the amount of blurring applied to the image.
+ * The implementation uses a convolution matrix value that is constant for the box blur, allowing for efficient computation.
+ * The filter is applied to a flat array of pixel data, where each number corresponds to a pixel's luminance value.
+ */
+function boxBlurRows(input: number[], output: number[], width: number, height: number, radius: number): void {
 	const iarr = 1 / (radius + radius + 1); // convolution matrix value - constant for box blur
 
 	// loop through each row
@@ -20,13 +28,13 @@ function boxBlurRows(input, output, width, height, radius) {
 			val += input[ri++] - fv;
 			output[ti++] = val * iarr;
 		}
-		
+
 		// take a floating average from {radius} to {width - radius}
 		for (let j = radius + 1; j < width - radius; j++) {
 			val += input[ri++] - input[li++];
 			output[ti++] = val * iarr;
 		}
-		
+
 		// average out the last {radius} pixels
 		for (let j = 0; j < radius; j++) {
 			val += lv - input[li++];
@@ -35,7 +43,7 @@ function boxBlurRows(input, output, width, height, radius) {
 	}
 }
 
-function boxBlurColumns(input, output, width, height, radius) {
+function boxBlurColumns(input: number[], output: number[], width: number, height: number, radius: number): void {
 	const iarr = 1 / (radius + radius + 1); // convolution matrix value - constant for box blur
 
 	// loop through each column
@@ -59,7 +67,7 @@ function boxBlurColumns(input, output, width, height, radius) {
 			ri += width;
 			ti += width;
 		}
-		
+
 		// take a floating average from {radius} to {height - radius}
 		for (let j = radius + 1; j < height - radius; j++) {
 			val += input[ri] - input[li];
@@ -68,7 +76,7 @@ function boxBlurColumns(input, output, width, height, radius) {
 			ri += width;
 			ti += width;
 		}
-		
+
 		// average out the last {radius} pixels
 		for (let j = 0; j < radius; j++) {
 			val += lv - input[li];
@@ -79,10 +87,10 @@ function boxBlurColumns(input, output, width, height, radius) {
 	}
 }
 
-export default (data, width, height, passes) => {
+export default (data: number[], width: number, height: number, passes: number): number[] => {
 
 	// copy data to temp array
-	const output = Array(data.length).fill(0);
+	const output = Array<number>(data.length).fill(0);
 
 	// apply the filter
 	const block = 128, // how many pixels to divide the blocks into
@@ -93,4 +101,4 @@ export default (data, width, height, passes) => {
 		boxBlurColumns(output, data, width, height, winy);
 	}
 	return data;
-}
+};

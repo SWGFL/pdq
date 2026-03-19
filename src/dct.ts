@@ -1,13 +1,12 @@
 /**
  * Convert 64x64 data block to 16x16 DCT, using 16x64, 64x16, and 16x16
  */
-
-export default data => {
-	const dct16x64 = Array(1024).fill(0),
-		buffer16x16 = Array(125).fill(0),
-		buffer16x64 = Array(1024).fill(0),
+export default (data: number[] | Uint8Array): number[] => {
+	const dct16x64 = Array<number>(1024).fill(0),
+		buffer16x16 = Array<number>(256).fill(0),
+		buffer16x64 = Array<number>(1024).fill(0),
 		scale = Math.sqrt(2 / 64);
-	
+
 	for (let i = 0; i < 16; i++) {
 		for (let j = 0; j < 64; j++) {
 			dct16x64[i * 64 + j] = scale * Math.cos((Math.PI / 2 / 64) * (i + 1) * (2 * j + 1));
