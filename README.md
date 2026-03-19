@@ -1,4 +1,4 @@
-# Native Javascript/PHP PDQ Image Hashing
+# Native TypeScript/PHP PDQ Image Hashing
 
 PDQ is a photo hashing algorithm that can turn photos into 256 bit signatures which can then be used to match other photos.
 
@@ -8,63 +8,53 @@ This project is an attempt to generate hashes natively in the browser, over usin
 
 The repo comes with some example/testing scripts. After cloning the repo, navigate to the `/test/` directory:
 
-- `index.html`: Test native Javascript vs PHP vs Reference
+- `index.html`: Test native TypeScript vs PHP vs Reference
 - `php.php`: Test PHP vs Reference PHP
 
-## Javascript Usage
+## TypeScript Usage
 
-To use the code, clone the repo and do something like the following:
+The library is written in TypeScript and exports full type definitions. To use the code, clone the repo and do something like the following:
 
-```javascript
-import pdq from "pdq/src/pdq.js"; // point to wherever the repository is
+```typescript
+import pdq from "pdq"; // or point to "dist/pdq.js"
+import type { PdqConfig, PdqResult } from "pdq";
 
-// the URL of the image
-const img = "/testimage.jpg";
-
-const config = {
-	resize: 512, // target dimension (px) for the image, should be scaled down to make PDQ faster
-	debug: false, // dump the process results in the console
+const config: PdqConfig = {
+	debug: false, // render intermediate results to the DOM
+	passes: 2, // number of box blur filter passes
+	block: 64, // rescale block size
 	transform: false // whether to generate dihedral transformation hashes
 };
 
-// create an image object
-const prom = new Promise(success => {
-	const img = new Image();
-	img.onload = () => success(img);
-	img.src = URL.createObjectURL(file);
-})
-
-	// put the image on a canvas
-	.then(img => {
-		const canvas = document.createElement("canvas"),
-			context = canvas.getContext("2d");
-		canvas.imageSmoothingQuality = "high";
-		canvas.width = config.resize;
-		canvas.height = config.resize;
-		context.drawImage(img, 0, 0, img.width, img.height, 0, 0, config.resize, config.resize); // scale the image down
-		return canvas;
-	})
+// create an image object and put it on a canvas
+const canvas = document.createElement("canvas");
+const context = canvas.getContext("2d")!;
+const img = new Image();
+img.onload = () => {
+	canvas.width = 512;
+	canvas.height = 512;
+	context.drawImage(img, 0, 0, img.width, img.height, 0, 0, 512, 512);
 
 	// run PDQ
-	.then(canvas => pdq(canvas, config))
-
-	// get the results
-	.then(results => {
-		console.log(results); // returns 8 hashes if `transform` is set, otherwise just a single hash
+	pdq(canvas, config).then((results: PdqResult) => {
+		console.log(results.hash); // string if `transform` is false, string[] of 8 hashes if true
+		console.log(results.quality); // quality score
 	});
+};
+img.src = "/testimage.jpg";
 ```
 
-### Build Javascript From Source
+### Build From Source
 
 To build the code from source, run the following commands:
 
 ```console
-$ npm i
-$ grunt
+$ npm install
+$ npm run build
 ```
 ## PHP Usage
 
-The PHP version has been rewritten to use GD image manipulations for the greyscaling and box-blur to imnprove performance, as these are the most computationally expensive.
+The PHP version has been rewritten to use GD image manipulations for the greyscaling and box-blur to improve performance, as these are the most computationally expensive.
 
 Here is a basic script to show usage of the PHP PDQ hash generator:
 
