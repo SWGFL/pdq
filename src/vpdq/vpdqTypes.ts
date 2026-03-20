@@ -2,7 +2,7 @@
  * vPDQ data types and constants for video frame hashing.
  */
 
-import { Hash256 } from "../hash256";
+import { Hash256 } from "./hash256";
 
 class VpdqFeature {
   pdqHash: Hash256;

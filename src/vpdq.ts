@@ -6,7 +6,7 @@
  * its canvas-based hasher as the default.
  */
 
-import { pdqHashFromRGBA } from "./pdq";
+import { pdqHashFromRGBA } from "./vpdq/pdqhashing";
 import { VpdqFeature } from "./vpdq/vpdqTypes";
 
 export interface HashVideoOptions {
