@@ -1,29 +1,6 @@
 import { describe, it, expect } from "vitest";
 import quality from "../src/quality";
-
-function makeUniformBlock(block: number, value: number): Float32Array {
-	return new Float32Array(block * block).fill(value);
-}
-
-function makeCheckerboard(block: number, val1: number, val2: number): Float32Array {
-	const data = new Float32Array(block * block);
-	for (let i = 0; i < block; i++) {
-		for (let j = 0; j < block; j++) {
-			data[i * block + j] = (i + j) % 2 === 0 ? val1 : val2;
-		}
-	}
-	return data;
-}
-
-function makeGradientBlock(block: number): Float32Array {
-	const data = new Float32Array(block * block);
-	for (let i = 0; i < block; i++) {
-		for (let j = 0; j < block; j++) {
-			data[i * block + j] = Math.round((j / (block - 1)) * 255);
-		}
-	}
-	return data;
-}
+import { makeUniformBlock, makeCheckerboard, makeGradientBlock } from "./helpers";
 
 describe("quality", () => {
 	it("returns 0 for a uniform block", () => {
@@ -54,12 +31,7 @@ describe("quality", () => {
 	});
 
 	it("works with Uint8Array input", () => {
-		const data = new Uint8Array(64);
-		for (let i = 0; i < 8; i++) {
-			for (let j = 0; j < 8; j++) {
-				data[i * 8 + j] = (i + j) % 2 === 0 ? 0 : 255;
-			}
-		}
+		const data = new Uint8Array(makeCheckerboard(8, 0, 255));
 		expect(quality(8, data)).toBeGreaterThan(0);
 	});
 });

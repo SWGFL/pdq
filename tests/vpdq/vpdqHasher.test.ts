@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { hashFrames, pruneFrames } from "../../src/vpdq/vpdqHasher";
 import { VpdqFeature } from "../../src/vpdq/vpdqTypes";
-import { Hash256 } from "../../src/hash256";
+import { Hash256 } from "../../src/vpdq/hash256";
 import { makeUniformRGBA, makeGradientRGBA } from "../helpers";
 import type { FrameData } from "../../src/vpdq/vpdqHasher";
 

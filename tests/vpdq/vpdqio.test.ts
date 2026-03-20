@@ -9,7 +9,7 @@ import {
 	prepareFeatures,
 } from "../../src/vpdq/vpdqio";
 import { VpdqFeature } from "../../src/vpdq/vpdqTypes";
-import { Hash256 } from "../../src/hash256";
+import { Hash256 } from "../../src/vpdq/hash256";
 
 function makeFeature(hexChar: string, frameNumber: number, quality: number, timeStamp: number): VpdqFeature {
 	return new VpdqFeature(

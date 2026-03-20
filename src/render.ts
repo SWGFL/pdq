@@ -1,9 +1,11 @@
 /**
  * Rendering functions for visualising pixel data.
+ * The render function takes the width, height, and pixel data (either as a number array or a Uint8Array) and creates an HTMLCanvasElement to display the image.
+ * The pixel data is expected to be in the form of luminance values, where each number corresponds to the intensity of a pixel.
+ * The renderHash function takes a Uint8Array representing a hash and converts it into a visual representation on a canvas, where each bit of the hash is represented as either black or white pixels.
+ * Both functions append the created canvas to the document body for display.
  */
-import { Hash256 } from "./hash256";
-
-const render = (width: number, height: number, data: Float32Array | Float64Array | number[] | Uint8Array): HTMLCanvasElement => {
+const render = (width: number, height: number, data: number[] | Uint8Array): HTMLCanvasElement => {
 	const canvas = document.createElement("canvas"),
 		context = canvas.getContext("2d")!,
 		img = new ImageData(width, height),
@@ -23,10 +25,12 @@ const render = (width: number, height: number, data: Float32Array | Float64Array
 
 export default render;
 
-export function renderHash(hash: Hash256): HTMLCanvasElement {
+export function renderHash(data: Uint8Array): HTMLCanvasElement {
 	const bits: number[] = [];
-	for (let i = 0; i < 256; i++) {
-		bits.push(hash.getBit(i) ? 0 : 255);
+	for (const byte of data) {
+		for (let i = 7; i >= 0; i--) {
+			bits.push((byte >> i) & 1 ? 0 : 255);
+		}
 	}
 	const dim = Math.sqrt(bits.length);
 	return render(dim, dim, bits);

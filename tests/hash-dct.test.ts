@@ -1,67 +1,71 @@
 import { describe, it, expect } from "vitest";
-import { pdqBuffer16x16ToBits, torben } from "../src/hash-dct";
-import { Hash256 } from "../src/hash256";
+import hash from "../src/hash-dct";
 
-describe("torben (median finder)", () => {
-	it("finds median of odd-length array", () => {
-		expect(torben([1, 3, 5, 7, 9], 5)).toBe(5);
-	});
-
-	it("finds median of even-length array", () => {
-		const result = torben([10, 20, 30, 40], 4);
-		expect(result).toBeGreaterThanOrEqual(20);
-		expect(result).toBeLessThanOrEqual(30);
-	});
-
-	it("handles single element", () => {
-		expect(torben([42], 1)).toBe(42);
-	});
-
-	it("handles identical values", () => {
-		expect(torben([7, 7, 7, 7, 7], 5)).toBe(7);
-	});
-
-	it("works with Float64Array", () => {
-		const arr = new Float64Array([1.5, 2.5, 3.5, 4.5, 5.5]);
-		expect(torben(arr, 5)).toBeCloseTo(3.5, 5);
-	});
-});
-
-describe("pdqBuffer16x16ToBits", () => {
-	it("returns a Hash256", () => {
-		const dctData = new Float64Array(256);
-		for (let i = 0; i < 256; i++) dctData[i] = i;
-		const result = pdqBuffer16x16ToBits(dctData);
-		expect(result).toBeInstanceOf(Hash256);
+describe("hash.computeDct", () => {
+	it("returns a 32-byte Uint8Array", () => {
+		const dct = Array.from({ length: 256 }, (_, i) => i);
+		const result = hash.computeDct(dct);
+		expect(result).toBeInstanceOf(Uint8Array);
+		expect(result).toHaveLength(32);
 	});
 
 	it("is deterministic", () => {
-		const dctData = new Float64Array(256);
-		for (let i = 0; i < 256; i++) dctData[i] = Math.sin(i);
-		const a = pdqBuffer16x16ToBits(dctData);
-		const b = pdqBuffer16x16ToBits(new Float64Array(dctData));
-		expect(a.equals(b)).toBe(true);
+		const dct = Array.from({ length: 256 }, (_, i) => Math.sin(i));
+		expect(hash.computeDct(dct)).toEqual(hash.computeDct(dct));
 	});
 
 	it("produces all-zero hash for uniform input", () => {
-		const dctData = new Float64Array(256).fill(42);
-		const result = pdqBuffer16x16ToBits(dctData);
-		expect(result.hammingNorm()).toBe(0);
+		const dct = Array(256).fill(42);
+		const result = hash.computeDct(dct);
+		// all values equal median, none > median, so all bits are 0
+		expect(result.every(byte => byte === 0)).toBe(true);
 	});
 
 	it("sets bits where value exceeds median", () => {
-		const dctData = new Float64Array(256);
-		for (let i = 0; i < 256; i++) dctData[i] = i;
-		const result = pdqBuffer16x16ToBits(dctData);
-		// values above median should set bits
-		expect(result.hammingNorm()).toBeGreaterThan(0);
-		expect(result.hammingNorm()).toBeLessThan(256);
+		// values 0..255, median is value at index 127 after sort = 127
+		const dct = Array.from({ length: 256 }, (_, i) => i);
+		const result = hash.computeDct(dct);
+		// values 128-255 should set bits, values 0-127 should not
+		// bit i is set if dct[i] > median(127)
+		for (let i = 0; i < 256; i++) {
+			const byteIdx = Math.floor(i / 8);
+			const bitIdx = i % 8;
+			const bit = (result[byteIdx] >> bitIdx) & 1;
+			if (i > 127) {
+				expect(bit).toBe(1);
+			} else {
+				expect(bit).toBe(0);
+			}
+		}
+	});
+});
+
+describe("hash.toHex", () => {
+	it("returns a 64-character hex string for 32 bytes", () => {
+		const bytes = new Uint8Array(32);
+		expect(hash.toHex(bytes)).toHaveLength(64);
 	});
 
-	it("hex string is 64 characters", () => {
-		const dctData = new Float64Array(256);
-		for (let i = 0; i < 256; i++) dctData[i] = i;
-		const result = pdqBuffer16x16ToBits(dctData);
-		expect(result.toHexString()).toHaveLength(64);
+	it("converts known bytes correctly", () => {
+		const bytes = new Uint8Array(32);
+		bytes[0] = 0xab;
+		bytes[31] = 0xcd;
+		const hex = hash.toHex(bytes);
+		// toHex reverses byte order, so bytes[31] appears first
+		expect(hex.startsWith("cd")).toBe(true);
+		expect(hex.endsWith("ab")).toBe(true);
+	});
+
+	it("pads single-digit hex values with zero", () => {
+		const bytes = new Uint8Array(32);
+		bytes[0] = 0x01;
+		const hex = hash.toHex(bytes);
+		expect(hex.endsWith("01")).toBe(true);
+	});
+
+	it("produces lowercase hex", () => {
+		const bytes = new Uint8Array(32).fill(0xff);
+		const hex = hash.toHex(bytes);
+		expect(hex).toBe("f".repeat(64));
 	});
 });

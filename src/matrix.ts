@@ -1,13 +1,15 @@
+
 /**
  * Matrix transformations for pixel data.
- * Rotation and flipping for generating dihedral transformation hashes.
+ * These transformations include rotation and flipping of the pixel data.
+ * The pixel data is represented as a flat array of numbers, where each number corresponds to a pixel's luminance value.
+ * The transformations are applied to the pixel data to produce new arrangements of the pixels, which can be used for various purposes such as data augmentation or visualisation.
  */
 export default {
-	rotate: (data: Float64Array | number[]): Float64Array | number[] => {
+	rotate: (data: number[]): number[] => {
 		const len = data.length,
-			dim = Math.sqrt(len);
-		const isTyped = data instanceof Float64Array;
-		const rotated = isTyped ? new Float64Array(len) : Array<number>(len);
+			dim = Math.sqrt(len),
+			rotated = Array<number>(len);
 		for (let i = 0; i < dim; i++) {
 			for (let j = 0; j < dim; j++) {
 				rotated[i * dim + j] = data[(dim - j - 1) * dim + i];
@@ -15,15 +17,12 @@ export default {
 		}
 		return rotated;
 	},
-	flip: (data: Float64Array | number[]): Float64Array | number[] => {
+	flip: (data: number[]): number[] => {
 		const len = data.length,
 			dim = Math.sqrt(len);
-		const isTyped = data instanceof Float64Array;
-		const flipped = isTyped ? new Float64Array(len) : Array<number>(len);
+		let flipped: number[] = [];
 		for (let i = 0; i < dim; i++) {
-			for (let j = 0; j < dim; j++) {
-				flipped[i * dim + j] = data[i * dim + (dim - j - 1)];
-			}
+			flipped = flipped.concat(data.slice(i * dim, (i + 1) * dim).reverse());
 		}
 		return flipped;
 	},
