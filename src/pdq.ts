@@ -165,6 +165,6 @@ export default (canvas: HTMLCanvasElement|OffscreenCanvas, config?: PdqConfig): 
 		}
 
 		// Return the image data.
-		success(canvas.getContext("2d")!.getImageData(0, 0, width, height).data);
+		success((canvas.getContext("2d") as CanvasRenderingContext2D).getImageData(0, 0, width, height).data);
 	}).then(data => pdqRaw(data, width, height, opts));
 };

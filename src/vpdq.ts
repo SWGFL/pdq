@@ -33,7 +33,7 @@ export default (video: HTMLVideoElement, config?: VpdqConfig) => {
 			const item = new Promise((resolve, reject) => {
 				resolve(frame(video, i));
 			})
-				.then(data => pdqRaw(data as Uint8ClampedArray, width, height, ));
+				.then(data => pdqRaw(data as Uint8ClampedArray, width, height));
 			proms.push(item);
 		}
 
