@@ -135,20 +135,8 @@
 
 		<script type="module">
 			// Refactored implementation (src/)
-			import { pdqHashFromRGBA as srcHash } from "../src/vpdq.ts";
-			import {
-				matchTwoHashBrute,
-				isMatch,
-				featuresToCppFormat,
-				featuresToJson,
-				VpdqFeature,
-				VPDQ_DISTANCE_THRESHOLD,
-				VPDQ_QUALITY_THRESHOLD,
-			} from "../src/vpdq.ts";
-
-			// Meta reference implementation
-			import { pdqHashFromRGBA as metaHash } from "../meta/pdqhashing.ts";
-			import { Hash256 as MetaHash256 } from "../meta/hash256.ts";
+			import vpdq from "../dist/pdq.js";
+			import vpdq from "../dist/vpdq.js";
 
 			function tableRow(table, tag, items) {
 				const row = document.createElement("tr");

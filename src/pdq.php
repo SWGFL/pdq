@@ -8,10 +8,9 @@ class pdq {
 	// Default configuration
 	protected array $config = [
 		'debug' => false,
-		'passes' => 2,
 		'block' => 64,
 		'scale' => 512,
-		'divisor' => 128, // jarosz filter divisor
+		'divisor' => 72, // jarosz filter divisor
 		'transform' => false
 	];
 
@@ -22,10 +21,9 @@ class pdq {
 	/**
 	 * Main function to process images and generate PDQ hashes
 	 * 
-	 * @param array $files Files from $_FILES
-	 * @param bool $compare Whether to compare against reference
-	 * @param bool $debug Enable debug output
-	 * @return array Results with images and hash data
+	 * @param array|string|\GdImage $files File path(s) or GdImage object(s) to hash
+	 * @param string|null &$error Error message if processing fails
+	 * @return array|false Hash result(s), or false on error
 	 */
 	public function run(array|string|\GdImage $files, ?string &$error = null) : array|false {
 		
@@ -58,8 +56,8 @@ class pdq {
 				$error = 'Unable to extract pixel data';
 				return false;
 
-			// 2 pass box blur filter
-			} elseif (($image = $this->jaroszFilter($image, $this->config['passes'])) === false) {
+			// box blur filter (passes calculated from image dimensions)
+			} elseif (($image = $this->jaroszFilter($image)) === false) {
 				$error = 'Unable to apply blur filter';
 				return false;
 
@@ -118,8 +116,6 @@ class pdq {
 			return \imagecreatefromwbmp($file);
 		} else if ($type === 'image/bmp') {
 			return \imagecreatefrombmp($file);
-		} else {
-			throw new \Exception('Unsupported file format');
 		}
 		return false;
 	}
@@ -163,32 +159,30 @@ class pdq {
 	 * @return \GdImage|false The updated GdImage, or false if there's an error
 	 */
 	protected function luminance(\GdImage $image) : \GdImage|false {
-		\imagefilter($image, IMG_FILTER_GRAYSCALE);
+		if (\imagefilter($image, IMG_FILTER_GRAYSCALE)) {
 
-		// debug
-		if ($this->config['debug']) {
-			$this->render($image);
+			// debug
+			if ($this->config['debug']) {
+				$this->render($image);
+			}
+			return $image;
 		}
-		return $image;
+		return false;
 	}
 	
 	/**
 	 * Apply a Jarosz (Box Blur or Tent) filter to the supplied GdImage
 	 * 
 	 * @param \GdImage $image the image to convert
-	 * @return \GdImage|false the luma matrix as an array, or false if there's an error
+	 * @return \GdImage|false the blurred image, or false if there's an error
 	 */
-	protected function jaroszFilter(\GdImage $image, int $passes = 2) : \GdImage|false {
-		$value = 1;
-		$matrix = [
-			[$value, $value, $value],
-			[$value, $value, $value],
-			[$value, $value, $value]
-		];
-		$divisor = 9;
-		$offset = 0;
+	protected function jaroszFilter(\GdImage $image) : \GdImage|false {
+		$dim = \min(\imagesx($image), \imagesy($image));
+		$targetWindow = \intval(($dim + $this->config['divisor'] - 1) / $this->config['divisor']);
+		$passes = \max(1, \intval(\round($targetWindow / 2)));
+		$matrix = [[1, 1, 1], [1, 1, 1], [1, 1, 1]];
 		for ($i = 0; $i < $passes; $i++) {
-			\imageconvolution($image, $matrix, $divisor, $offset);
+			\imageconvolution($image, $matrix, 9, 0);
 		}
 		
 		// render the output
@@ -197,7 +191,7 @@ class pdq {
 		}
 		return $image;
 	}
-	
+
 	/**
 	 * Rescale image data to specific block size, picking the centre pixel as the greyscale value
 	 * 
@@ -217,8 +211,8 @@ class pdq {
 		// Target centers not corners as in the original implementation
 		for ($j = 0; $j < $block; $j++) {
 			for ($i = 0; $i < $block; $i++) {
-				$x = \intval(\round(($i + 0.5) * $xscale));
-				$y = \intval(\round(($j + 0.5) * $yscale));
+				$x = \min(\intval(\round(($i + 0.5) * $xscale)), $width - 1);
+				$y = \min(\intval(\round(($j + 0.5) * $yscale)), $height - 1);
 				$rgb = \imagecolorat($image, $x, $y);
 				$scaled[$j * $block + $i] = $rgb & 0xFF;
 			}
@@ -232,11 +226,11 @@ class pdq {
 	}
 	
 	/**
-	 * Convert image data back to a GD image (for flat 1D array)
-	 * 
+	 * Convert image data back to a GD image and render it (for flat 1D array)
+	 *
 	 * @param array $data the array of image data
-	 * @param int $width the width of the image to return
-	 * @param int $height the height of the image to return
+	 * @param int $width the width of the image to render
+	 * @param int $height the height of the image to render
 	 * @return void
 	 */
 	protected function renderData(array $data, int $width, int $height) : void {
@@ -253,27 +247,26 @@ class pdq {
 	
 	/**
 	 * Generate a quality metric
-	 * 
+	 *
 	 * @param array $data the array of image data
-	 * @param int $width the width of the image to return
-	 * @param int $height the height of the image to return
-	 * @return void
+	 * @param int $block the block size (width and height of the grid)
+	 * @return int|false the quality score (0-100), or false on error
 	 */
-	protected function quality(array $data, int $block) : int {
+	protected function quality(array $data, int $block) : int|false {
 		$gradient = 0;
 
-		// Diff left to right
-		for ($y = 0; $y < $block; $y++) {
-			for ($x = 0; $x < $block - 1; $x++) {
-				$d = \intval((($data[$x * $block + $y] - $data[($x + 1) * $block + $y]) * 100) / 255);
+		// Diff top to bottom
+		for ($col = 0; $col < $block; $col++) {
+			for ($row = 0; $row < $block - 1; $row++) {
+				$d = \intval((($data[$row * $block + $col] - $data[($row + 1) * $block + $col]) * 100) / 255);
 				$gradient += \abs($d);
 			}
 		}
 
-		// Diff top to bottom
-		for ($x = 0; $x < $block ; $x++) {
-			for ($y = 0; $y < $block- 1; $y++) {
-				$d = \intval((($data[$x * $block + $y] - $data[$x * $block + $y + 1]) * 100) / 255);
+		// Diff left to right
+		for ($row = 0; $row < $block; $row++) {
+			for ($col = 0; $col < $block - 1; $col++) {
+				$d = \intval((($data[$row * $block + $col] - $data[$row * $block + $col + 1]) * 100) / 255);
 				$gradient += \abs($d);
 			}
 		}
@@ -380,9 +373,9 @@ class pdq {
 	
 	/**
 	 * Flip a matrix horizontally
-	 * 
-	 * @param array $data the image data to rotate
-	 * @return array the rotated image data as an array
+	 *
+	 * @param array $data the image data to flip
+	 * @return array the flipped image data as an array
 	 */
 	protected function flipMatrix(array $data) : array {
 		$len = \count($data);
@@ -397,10 +390,10 @@ class pdq {
 	}
 	
 	/**
-	 * Compute hash from DCT data
-	 * 
-	 * @param array $data the image data to rotate
-	 * @return array the rotated image data as an array
+	 * Compute binary hash from DCT data
+	 *
+	 * @param array $dct the DCT coefficients
+	 * @return array the binary hash as a byte array
 	 */
 	protected function computeDct(array $dct) : array {
 
@@ -483,26 +476,21 @@ class pdq {
 	 * 
 	 * @param string $hex1 the first hex string to compare
 	 * @param string $hex2 the second hex string to compare
-	 * @return int the distance (difference)
+	 * @return int|false the distance (difference), or false if lengths differ
 	*/
-	public function hammingDistance(string $hex1, string $hex2) : int {
-		$a1 = $this->hex2binCustom($hex1);
-		$a2 = $this->hex2binCustom($hex2);
-		$dh = 0;
-		for ($i = 0; $i < \strlen($a1); $i++) {
-			if ($a1[$i] !== $a2[$i]) {
-				$dh++;
+	public function hammingDistance(string $hex1, string $hex2) : int|false {
+		if (\strlen($hex1) === \strlen($hex2)) {
+			$a1 = $this->hex2binCustom($hex1);
+			$a2 = $this->hex2binCustom($hex2);
+			$dh = 0;
+			for ($i = 0; $i < \strlen($a1); $i++) {
+				if ($a1[$i] !== $a2[$i]) {
+					$dh++;
+				}
 			}
+			return $dh;
 		}
-		return $dh;
-	}
-
-	public function getBitDiff(string $hex1, string $hex2) : string {
-		$bits = '';
-		foreach (\str_split($hex1) AS $key => $item) {
-			$bits .= $hex2[$key] === $item ? '1' : '0';
-		}
-		return $bits;
+		return false;
 	}
 
 	/**

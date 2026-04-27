@@ -5,7 +5,7 @@
  * The renderHash function takes a Uint8Array representing a hash and converts it into a visual representation on a canvas, where each bit of the hash is represented as either black or white pixels.
  * Both functions append the created canvas to the document body for display.
  */
-const render = (width: number, height: number, data: number[] | Uint8Array): HTMLCanvasElement => {
+const render = (width: number, height: number, data: number[] | Float32Array | Uint8Array): HTMLCanvasElement => {
 	const canvas = document.createElement("canvas"),
 		context = canvas.getContext("2d")!,
 		img = new ImageData(width, height),
@@ -25,13 +25,25 @@ const render = (width: number, height: number, data: number[] | Uint8Array): HTM
 
 export default render;
 
-export function renderHash(data: Uint8Array): HTMLCanvasElement {
+export function renderHash(data: Uint8Array, scale: number = 1): HTMLCanvasElement {
 	const bits: number[] = [];
 	for (const byte of data) {
 		for (let i = 7; i >= 0; i--) {
 			bits.push((byte >> i) & 1 ? 0 : 255);
 		}
 	}
-	const dim = Math.sqrt(bits.length);
-	return render(dim, dim, bits);
+	const dim = Math.sqrt(bits.length),
+		scaled: number[] = [];
+	if (scale > 1) {
+		for (let y = 0; y < dim; y++) {
+			for (let sy = 0; sy < scale; sy++) {
+				for (let x = 0; x < dim; x++) {
+					for (let sx = 0; sx < scale; sx++) {
+						scaled.push(bits[y * dim + x]);
+					}
+				}
+			}
+		}
+	}
+	return render(dim * scale, dim * scale, scaled || bits);
 }
