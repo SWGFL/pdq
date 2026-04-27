@@ -1,12 +1,17 @@
 import { defineConfig } from "vite";
-import { resolve } from "path";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
 	build: {
 		lib: {
-			entry: resolve(__dirname, "src/pdq.ts"),
+			entry: {
+				pdq: resolve(__dirname, "src/pdq.ts"),
+				vpdq: resolve(__dirname, "src/vpdq.ts"),
+			},
 			formats: ["es"],
-			fileName: "pdq",
 		},
 		sourcemap: true,
 		outDir: "dist",

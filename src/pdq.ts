@@ -12,6 +12,7 @@ export interface PdqConfig {
 	passes?: number;
 	block?: number;
 	transform?: boolean;
+	hashscale?: number
 }
 
 export interface PdqResult {
@@ -20,40 +21,24 @@ export interface PdqResult {
 	quality: number;
 }
 
-/**
- * Perceptual hash (PDQ) implementation for image similarity comparison.
- * The function takes an HTMLCanvasElement and an optional configuration object, and returns a Promise that resolves to a PdqResult object containing the hash and quality score.
- * The process involves several steps: extracting image data, converting it to luminance, applying a Jarosz box blur filter, rescaling the image to a specified block size, calculating the quality of the block, generating a 2D discrete cosine transform (DCT), optionally applying dihedral transformations to the DCT, and finally computing the hash from the DCT values.
- * The resulting hash can be used for comparing images based on their perceptual similarity, while the quality score provides a heuristic measure of the image's detail and sharpness.
- */
-export default (canvas: HTMLCanvasElement, config?: PdqConfig): Promise<PdqResult> => {
+const config = {
+	debug: false,
+	passes: 2,
+	block: 64,
+	transform: false, // whether to generate dihedral transformation hashes
+	hashscale: 4 // the scaling factor for rendering the output hash (debug)
+};
 
-	// merge default config
-	const opts = Object.assign({
-		debug: false,
-		passes: 2,
-		block: 64,
-		transform: false, // whether to generate dihedral transformation hashes
-	}, config);
+function getConfig(opts?: PdqConfig) {
+	return { ...config, ...opts };
+}
 
-	// assign variables
-	const block = opts.block,
-		debug = opts.debug,
-		width = canvas.width,
-		height = canvas.height;
+export const pdqRaw = (data: Uint8ClampedArray<ArrayBufferLike>, width: number, height: number, config?: PdqConfig): Promise<PdqResult> => {
+	const opts = getConfig(config),
+		block = opts.block,
+		debug = opts.debug;
 	let q: number;
-
-	// extract the image data
-	return new Promise<Uint8ClampedArray>(success => {
-
-		// debug
-		if (debug) {
-			document.body.appendChild(canvas);
-		}
-
-		// Return the image data.
-		success(canvas.getContext("2d")!.getImageData(0, 0, width, height).data);
-	})
+	return Promise.resolve(data)
 
 		// greyscale the image
 		.then(data => {
@@ -70,7 +55,7 @@ export default (canvas: HTMLCanvasElement, config?: PdqConfig): Promise<PdqResul
 
 		// apply a two-pass jarosz box blur filter
 		.then(data => {
-			const output = jarosz(data, width, height, opts.passes);
+			const output = jarosz(data, width, height, opts.passes, block);
 
 			// debug
 			if (debug) {
@@ -141,9 +126,45 @@ export default (canvas: HTMLCanvasElement, config?: PdqConfig): Promise<PdqResul
 
 				// debug
 				if (debug) {
-					renderHash(result);
+					renderHash(result, opts.hashscale);
 				}
 			}
 			return { type: "pdq" as const, hash: opts.transform ? hashes : hashes[0], quality: q };
 		});
+}
+
+/**
+ * Perceptual hash (PDQ) implementation for image similarity comparison.
+ * The function takes an HTMLCanvasElement and an optional configuration object, and returns a Promise that resolves to a PdqResult object containing the hash and quality score.
+ * The process involves several steps: extracting image data, converting it to luminance, applying a Jarosz box blur filter, rescaling the image to a specified block size, calculating the quality of the block, generating a 2D discrete cosine transform (DCT), optionally applying dihedral transformations to the DCT, and finally computing the hash from the DCT values.
+ * The resulting hash can be used for comparing images based on their perceptual similarity, while the quality score provides a heuristic measure of the image's detail and sharpness.
+ */
+export default (canvas: HTMLCanvasElement|OffscreenCanvas, config?: PdqConfig): Promise<PdqResult> => {
+
+	// merge default config
+	const opts = getConfig(config);
+
+	// assign variables
+	const debug = opts.debug,
+		width = canvas.width,
+		height = canvas.height;
+
+	// extract the image data
+	return new Promise<Uint8ClampedArray>(success => {
+
+		// debug
+		if (debug) {
+			if (canvas instanceof OffscreenCanvas) {
+				const element = document.createElement("canvas");
+				element.width = canvas.width;
+				element.height = canvas.height;
+				element.getContext("2d")?.drawImage(canvas, 0, 0);
+				canvas = element;
+			}
+			document.body.appendChild(canvas);
+		}
+
+		// Return the image data.
+		success(canvas.getContext("2d")!.getImageData(0, 0, width, height).data);
+	}).then(data => pdqRaw(data, width, height, opts));
 };

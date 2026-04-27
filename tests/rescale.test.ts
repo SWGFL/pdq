@@ -6,7 +6,7 @@ describe("rescale", () => {
 	it("returns Uint8Array of length block * block", () => {
 		const data = makeUniformBlock(128, 100);
 		const result = rescale(128, 128, 8, data);
-		expect(result).toBeInstanceOf(Uint8Array);
+		expect(result).toBeInstanceOf(Float32Array);
 		expect(result).toHaveLength(64); // 8 * 8
 	});
 
@@ -25,7 +25,7 @@ describe("rescale", () => {
 	});
 
 	it("works with Uint8Array input", () => {
-		const data = new Uint8Array(256).fill(100);
+		const data = new Float32Array(256).fill(100);
 		const result = rescale(16, 16, 4, data);
 		expect(result).toHaveLength(16);
 	});

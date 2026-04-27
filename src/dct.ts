@@ -1,7 +1,7 @@
 /**
  * Convert 64x64 data block to 16x16 DCT, using 16x64, 64x16, and 16x16
  */
-export default (data: number[] | Uint8Array): number[] => {
+export default (data: number[] | Float32Array): number[] => {
 	const dct16x64 = Array<number>(1024).fill(0),
 		buffer16x16 = Array<number>(256).fill(0),
 		buffer16x64 = Array<number>(1024).fill(0),

@@ -5,7 +5,7 @@
  * both horizontally and vertically, and scaling them to a percentage of the maximum possible difference (255).
  * The final quality score is scaled to a maximum of 100.
  */
-export default (block: number, data: number[] | Uint8Array): number => {
+export default (block: number, data: number[] | Float32Array): number => {
 	let gradient = 0;
 
 	// diff left to right
