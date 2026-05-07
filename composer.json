@@ -7,6 +7,11 @@
             "email": "will@hexydec.com"
         }
     ],
+    "scripts": {
+        "test": "phpunit",
+        "analyse": "phpstan --memory-limit=512M"
+    },
+    "minimum-stability": "stable",
     "autoload": {
         "classmap": ["src/"]
     },
