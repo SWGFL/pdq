@@ -6,6 +6,7 @@ import luminance from "./luminance";
 import rescale from "./rescale";
 import dct from "./dct";
 import quality from "./quality";
+import distance from "./distance";
 
 export interface PdqConfig {
 	debug?: boolean;
@@ -99,9 +100,9 @@ export const pdqRaw = (data: Uint8ClampedArray<ArrayBufferLike>, width: number, 
 			const dcts: Record<string, number[]> = { original: buffer };
 			if (opts.transform) {
 				dcts.rot90 = matrix.rotate(buffer);
-				dcts.flip = matrix.flip(buffer);
 				dcts.rot180 = matrix.rotate(dcts.rot90);
 				dcts.rot270 = matrix.rotate(dcts.rot180);
+				dcts.flip = matrix.flip(buffer);
 				dcts.fliprot90 = matrix.rotate(dcts.flip);
 				dcts.fliprot180 = matrix.rotate(dcts.fliprot90);
 				dcts.fliprot270 = matrix.rotate(dcts.fliprot180);
@@ -139,7 +140,7 @@ export const pdqRaw = (data: Uint8ClampedArray<ArrayBufferLike>, width: number, 
  * The process involves several steps: extracting image data, converting it to luminance, applying a Jarosz box blur filter, rescaling the image to a specified block size, calculating the quality of the block, generating a 2D discrete cosine transform (DCT), optionally applying dihedral transformations to the DCT, and finally computing the hash from the DCT values.
  * The resulting hash can be used for comparing images based on their perceptual similarity, while the quality score provides a heuristic measure of the image's detail and sharpness.
  */
-export default (canvas: HTMLCanvasElement|OffscreenCanvas, config?: PdqConfig): Promise<PdqResult> => {
+function pdq(canvas: HTMLCanvasElement|OffscreenCanvas, config?: PdqConfig): Promise<PdqResult> {
 
 	// merge default config
 	const opts = getConfig(config);
@@ -167,4 +168,9 @@ export default (canvas: HTMLCanvasElement|OffscreenCanvas, config?: PdqConfig): 
 		// Return the image data.
 		success((canvas.getContext("2d") as CanvasRenderingContext2D).getImageData(0, 0, width, height).data);
 	}).then(data => pdqRaw(data, width, height, opts));
+};
+
+export {
+	pdq as default,
+	distance
 };
