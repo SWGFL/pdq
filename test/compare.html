@@ -1,0 +1,243 @@
+﻿<!DOCTYPE html>
+<html>
+	<head>
+		<title>JS PDQ Test Page</title>
+		<style>
+			body {
+				font-family: Segoe UI, sans-serif;
+			}
+			.pdq__control {
+				padding: 3px 0;
+				display: flex;
+				align-items: center;
+			}
+			.pdq__label {
+				flex: 0 0 25%;
+				box-sizing: border-box;
+				padding-right: 10px;
+				text-align: right;
+			}
+			.pdq__input {
+				border: 1px solid #000;
+				padding: 10px;
+			}
+			.pdq__submit {
+				background: #000;
+				padding: 10px;
+				color: #FFF;
+				font-weight: bold;
+				margin-left: 25%;
+				border: 0;
+				width: 40%;
+			}
+			.pdq__progress {
+				margin: 30px 0 0 25%;
+				display: flex;
+				gap: 10px;
+			}
+			.pdq__progress > progress {
+				flex: 0 0 40%;
+				height: 15px;
+				appearance: none;
+			}
+			table, thead, tbody, tr, td, th {
+				padding: 0;
+				border: 0;
+				margin: 0;
+				border-collapse: separate;
+				border-spacing: 0;
+				text-align: left;
+			}
+			table {
+				margin: 15px 0;
+				padding: 0;
+				width: 100%;
+			}
+			th, td {
+				padding: 5px;
+				border-bottom: 1px solid #AAA;
+			}
+			input, textarea, select, button {
+				font-family: inherit;
+				font-size: inherit;
+				line-height: inherit;
+			}
+		</style>
+	</head>
+	<body>
+		<section class="pdq__select">
+			<h1>PDQ Native Javascript Comparison</h1>
+			<p>Select the image(s) you want to compare, to show how close they are when matched.</p>
+			<div class="pdq__control">
+				<label class="pdq__label">Test Image:</label>
+				<input class="pdq__input" type="file" id="pdq-test" value="" />
+			</div>
+			<div class="pdq__control">
+				<label class="pdq__label">Comparison Image(s):</label>
+				<input class="pdq__input" type="file" id="pdq-compare" value="" multiple="multiple" />
+			</div>
+			<div class="pdq__control">
+				<label class="pdq__label">Compare Dihedrals:</label>
+				<input class="pdq__input" type="checkbox" id="pdq-dihedral" value="" checked="checked" />
+			</div>
+			<div class="pdq__control">
+				<input class="pdq__submit" type="submit" id="pdq-start" value="Generate Hashes" />
+			</div>
+		</section>
+		<section class="pdq__results" id="pdq-results">
+
+		</section>
+		<script type="module">
+			import pdq, {distance} from "../dist/pdq.js";
+
+			function getImg(file) {
+				return new Promise(success => {
+					let url;
+					const img = new Image();
+					img.onload = () => {
+						URL.revokeObjectURL(url);
+						success(img);
+					};
+					url = URL.createObjectURL(file);
+					img.src = url;
+				});
+			}
+
+			function getCanvas(img, width, height) {
+				const canvas = document.createElement("canvas"),
+					context = canvas.getContext("2d");
+				canvas.imageSmoothingQuality = "high";
+				canvas.width = width;
+				canvas.height = height;
+				context.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height); // scale the image down
+				return canvas;
+			}
+
+			function rotateCanvas(canvas, deg, flip = false) {
+				const rad = deg * Math.PI / 180,
+					swap = deg === 90 || deg === 270,
+					output = document.createElement("canvas"),
+					context = output.getContext("2d");
+				output.width = swap ? canvas.height : canvas.width;
+				output.height = swap ? canvas.width : canvas.height;
+				context.translate(output.width / 2, output.height / 2);
+				if (flip) {
+					context.scale(-1, 1);
+				}
+				context.rotate(rad);
+				context.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+				return output;
+			}
+
+			function getPdq(file, transforms = false) {
+				const config = {
+					transform: transforms,
+					resize: 512
+				};
+				return getImg(file)
+
+					// resize image
+					.then(img => {
+						const width = Math.min(img.width, img.height, config.resize),
+							height = Math.min(img.width, img.height, config.resize);
+						return {canvas: getCanvas(img, width, height), img}
+					})
+
+					// generate hashes
+					.then(({canvas, img}) => pdq(canvas, config).then(result => ({ ...result, img })))
+
+					// save data
+					.then(hash => {
+						return {
+							file: file.name,
+							type: file.type,
+							...hash
+						};
+					});
+			}
+
+			function tableRow(table, tag, items) {
+				const row = document.createElement("tr");
+				items.forEach(item => {
+					const cell = document.createElement(tag);
+					if (Array.isArray(item)) {
+						const changefont = !item.some(value => value instanceof Node);
+						item.forEach(value => {
+							if (!(value instanceof Node)) {
+								const div = document.createElement("div");
+								if (changefont) {
+									div.style.fontFamily = "Courier New";
+									div.style.fontSize = "larger";
+								}
+								div.textContent = value;
+								value = div;
+							}
+							cell.appendChild(value);
+						});
+					} else if (item instanceof Node) {
+						cell.appendChild(item);
+					} else {
+						cell.textContent = item;
+					}
+					row.appendChild(cell);
+				});
+				table.appendChild(row);
+			}
+
+			document.addEventListener("DOMContentLoaded", () => {
+
+				// listen for the click event
+				document.getElementById("pdq-start").addEventListener("click", e => {
+					const test = document.getElementById("pdq-test").files,
+						compare = document.getElementById("pdq-compare").files,
+						dihedral = document.getElementById("pdq-dihedral").checked,
+						wrap = document.getElementById("pdq-results"),
+						threshold = 31,
+						size = 200;
+
+					// get root hash
+					if (!test[0]?.type.includes("image/")) {
+						alert("The test image must be an image");
+					} else {
+						getPdq(test[0])
+							.then(pdq => {
+
+								// draw table
+								const heading = document.createElement("h1"),
+									table = document.createElement("table"),
+									nodes = [heading, table];
+								heading.text = "Results";
+
+								// add header row
+								tableRow(table, "th", ["Image", "Compare", "Hashes", "Quality", "Diff", "Match"]);
+
+								// generate and compare hashes
+								const proms = [];
+								for (const file of compare) {
+									if (file.type.includes("image/")) {
+										proms.push(getPdq(file, dihedral).then(result => {
+											(Array.isArray(result.hash) ? result.hash : [result.hash]).forEach((item, i) => {
+												const dist = distance(pdq.hash, item),
+													canvas = getCanvas(result.img, size, size / result.img.width * result.img.height);
+												tableRow(table, "td", [
+													[getCanvas(pdq.img, size, size / pdq.img.width * pdq.img.height), pdq.file, pdq.img.width + "x" + pdq.img.height],
+													[i === 0 ? canvas : rotateCanvas(canvas, i * 90 % 360, i > 3), result.file, result.img.width + "x" + result.img.height],
+													[pdq.hash, item],
+													result.quality,
+													dist + " / 256 (" + parseFloat(100 / 256 * dist).toFixed(1) + "%)",
+													dist <= threshold ? "Match" : "No Match"
+												]);
+											});
+										}));
+									}
+								}
+
+								// attach table to document
+								wrap.replaceChildren(...nodes);
+							});
+					}
+				});
+			});
+		</script>
+	</body>
+</html>

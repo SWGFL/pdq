@@ -9,7 +9,6 @@ This project is an attempt to generate hashes natively in the browser, over usin
 The repo comes with some example/testing scripts. After cloning the repo, navigate to the `/test/` directory:
 
 - `index.html`: Test native TypeScript vs PHP vs Reference
-- `vpdq.html`: Test vPDQ video hashing — compares refactored (src) vs Meta reference implementation side-by-side
 - `php.php`: Test PHP vs Reference PHP
 
 ## TypeScript Usage

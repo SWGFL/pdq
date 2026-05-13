@@ -8,8 +8,7 @@ export default defineConfig({
 	build: {
 		lib: {
 			entry: {
-				pdq: resolve(__dirname, "src/pdq.ts"),
-				vpdq: resolve(__dirname, "src/vpdq.ts"),
+				pdq: resolve(__dirname, "src/pdq.ts")
 			},
 			formats: ["es"],
 		},
