@@ -27,9 +27,9 @@ export default render;
 
 export function renderHash(data: Uint8Array, scale: number = 1): HTMLCanvasElement {
 	const bits: number[] = [];
-	for (const byte of data) {
+	for (let b = data.length - 1; b >= 0; b--) {
 		for (let i = 7; i >= 0; i--) {
-			bits.push((byte >> i) & 1 ? 0 : 255);
+			bits.push((data[b] >> i) & 1 ? 0 : 255);
 		}
 	}
 	const dim = Math.sqrt(bits.length),

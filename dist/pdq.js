@@ -1,180 +1,170 @@
-function q(r, s, e, f, o, t, n) {
-  const c = Math.floor((n + 2) / 2), l = c - 1, a = n - c + 1, d = o - n, y = c - 1;
-  let p = e, g = e, m = f, h = 0, x = 0;
-  for (let i = 0; i < l; i++)
-    h += r[g], x++, g += t;
-  for (let i = 0; i < a; i++)
-    h += r[g], x++, s[m] = h / x, g += t, m += t;
-  for (let i = 0; i < d; i++)
-    h += r[g], h -= r[p], s[m] = h / x, p += t, g += t, m += t;
-  for (let i = 0; i < y; i++)
-    h -= r[p], x--, s[m] = h / x, p += t, m += t;
+//#region src/jarosz-filter.ts
+function e(e, t, n, r, i, a, o) {
+	let s = Math.floor((o + 2) / 2), c = s - 1, l = o - s + 1, u = i - o, d = s - 1, f = n, p = n, m = r, h = 0, g = 0;
+	for (let t = 0; t < c; t++) h += e[p], g++, p += a;
+	for (let n = 0; n < l; n++) h += e[p], g++, t[m] = h / g, p += a, m += a;
+	for (let n = 0; n < u; n++) h += e[p], h -= e[f], t[m] = h / g, f += a, p += a, m += a;
+	for (let n = 0; n < d; n++) h -= e[f], g--, t[m] = h / g, f += a, m += a;
 }
-function D(r, s, e, f, o) {
-  for (let t = 0; t < f; t++) {
-    const n = t * e;
-    q(r, s, n, n, e, 1, o);
-  }
+function t(t, n, r, i, a) {
+	for (let o = 0; o < i; o++) {
+		let i = o * r;
+		e(t, n, i, i, r, 1, a);
+	}
 }
-function w(r, s, e, f, o) {
-  for (let t = 0; t < e; t++)
-    q(r, s, t, t, f, e, o);
+function n(t, n, r, i, a) {
+	for (let o = 0; o < r; o++) e(t, n, o, o, i, r, a);
 }
-const I = (r, s, e, f, o) => {
-  const t = Array(r.length).fill(0), n = Math.floor((s + 2 * o - 1) / (2 * o)), c = Math.floor((e + 2 * o - 1) / (2 * o));
-  for (let l = 0; l < f; l++)
-    D(r, t, s, e, n), w(t, r, s, e, c);
-  return r;
-}, M = (r, s, e) => {
-  const f = document.createElement("canvas"), o = f.getContext("2d"), t = new ImageData(r, s), n = t.data;
-  f.width = r, f.height = s;
-  for (let c = 0; c < e.length; c++)
-    n[c * 4] = e[c], n[c * 4 + 1] = e[c], n[c * 4 + 2] = e[c], n[c * 4 + 3] = 255;
-  return o.putImageData(t, 0, 0), document.body.appendChild(f), f;
+var r = (e, r, i, a, o) => {
+	let s = Array(e.length).fill(0), c = Math.floor((r + 2 * o - 1) / (2 * o)), l = Math.floor((i + 2 * o - 1) / (2 * o));
+	for (let o = 0; o < a; o++) t(e, s, r, i, c), n(s, e, r, i, l);
+	return e;
+}, i = (e, t, n) => {
+	let r = document.createElement("canvas"), i = r.getContext("2d"), a = new ImageData(e, t), o = a.data;
+	r.width = e, r.height = t;
+	for (let e = 0; e < n.length; e++) o[e * 4] = n[e], o[e * 4 + 1] = n[e], o[e * 4 + 2] = n[e], o[e * 4 + 3] = 255;
+	return i.putImageData(a, 0, 0), document.body.appendChild(r), r;
 };
-function b(r, s = 1) {
-  const e = [];
-  for (const t of r)
-    for (let n = 7; n >= 0; n--)
-      e.push(t >> n & 1 ? 0 : 255);
-  const f = Math.sqrt(e.length), o = [];
-  if (s > 1)
-    for (let t = 0; t < f; t++)
-      for (let n = 0; n < s; n++)
-        for (let c = 0; c < f; c++)
-          for (let l = 0; l < s; l++)
-            o.push(e[t * f + c]);
-  return M(f * s, f * s, o || e);
+function a(e, t = 1) {
+	let n = [];
+	for (let t = e.length - 1; t >= 0; t--) for (let r = 7; r >= 0; r--) n.push(e[t] >> r & 1 ? 0 : 255);
+	let r = Math.sqrt(n.length), a = [];
+	if (t > 1) for (let e = 0; e < r; e++) for (let i = 0; i < t; i++) for (let i = 0; i < r; i++) for (let o = 0; o < t; o++) a.push(n[e * r + i]);
+	return i(r * t, r * t, a || n);
 }
-const u = {
-  rotate: (r) => {
-    const s = r.length, e = Math.sqrt(s), f = Array(s);
-    for (let o = 0; o < e; o++)
-      for (let t = 0; t < e; t++)
-        f[o * e + t] = r[(e - t - 1) * e + o];
-    return f;
-  },
-  flip: (r) => {
-    const s = r.length, e = Math.sqrt(s);
-    let f = [];
-    for (let o = 0; o < e; o++)
-      f = f.concat(r.slice(o * e, (o + 1) * e).reverse());
-    return f;
-  }
-}, j = {
-  computeDct: (r) => {
-    const s = [...r].sort((f, o) => f - o)[127], e = new Uint8Array(32);
-    return r.forEach((f, o) => {
-      e[Math.floor(o / 8)] |= (f > s ? 1 : 0) << o % 8;
-    }), e;
-  },
-  toHex: (r) => Array.from(r, (s) => ("0" + (s & 255).toString(16)).slice(-2)).reverse().join("")
-}, A = {
-  r: 0.299,
-  g: 0.587,
-  b: 0.114
-}, N = (r) => {
-  const s = Array(r.length / 4);
-  for (let e = 0; e < r.length; e += 4)
-    s[e / 4] = A.r * r[e] + A.g * r[e + 1] + A.b * r[e + 2];
-  return s;
-}, E = (r, s, e, f) => {
-  const o = new Float32Array(e * e);
-  for (let t = 0; t < e; t++) {
-    const n = Math.floor((t + 0.5) * s / e);
-    for (let c = 0; c < e; c++) {
-      const l = Math.floor((c + 0.5) * r / e);
-      o[t * e + c] = f[n * r + l];
-    }
-  }
-  return o;
-}, H = (r) => {
-  const s = Array(1024).fill(0), e = Array(256).fill(0), f = Array(1024).fill(0), o = Math.sqrt(2 / 64);
-  for (let t = 0; t < 16; t++)
-    for (let n = 0; n < 64; n++)
-      s[t * 64 + n] = o * Math.cos(Math.PI / 2 / 64 * (t + 1) * (2 * n + 1));
-  for (let t = 0; t < 16; t++)
-    for (let n = 0; n < 64; n++) {
-      let c = 0;
-      for (let l = 0; l < 64; l++)
-        c += s[t * 64 + l] * r[l * 64 + n];
-      f[t * 64 + n] = c;
-    }
-  for (let t = 0; t < 16; t++)
-    for (let n = 0; n < 16; n++) {
-      let c = 0;
-      for (let l = 0; l < 64; l++)
-        c += f[t * 64 + l] * s[n * 64 + l];
-      e[t * 16 + n] = c;
-    }
-  return e;
-}, P = (r, s) => {
-  let e = 0;
-  for (let f = 0; f < r - 1; f++)
-    for (let o = 0; o < r; o++) {
-      const t = s[f * r + o], n = s[(f + 1) * r + o], c = Math.trunc((t - n) * 100 / 255);
-      e += Math.abs(c);
-    }
-  for (let f = 0; f < r; f++)
-    for (let o = 0; o < r - 1; o++) {
-      const t = s[f * r + o], n = s[f * r + o + 1], c = Math.trunc((t - n) * 100 / 255);
-      e += Math.abs(c);
-    }
-  return Math.min(Math.trunc(e / 90), 100);
-}, R = {
-  debug: !1,
-  passes: 2,
-  block: 64,
-  transform: !1,
-  // whether to generate dihedral transformation hashes
-  hashscale: 4
-  // the scaling factor for rendering the output hash (debug)
+//#endregion
+//#region src/matrix.ts
+var o = {
+	rotate: (e) => {
+		let t = e.length, n = Math.sqrt(t), r = Array(t);
+		for (let t = 0; t < n; t++) for (let i = 0; i < n; i++) r[t * n + i] = e[(n - i - 1) * n + t];
+		return r;
+	},
+	flip: (e) => {
+		let t = e.length, n = Math.sqrt(t), r = [];
+		for (let t = 0; t < n; t++) r = r.concat(e.slice(t * n, (t + 1) * n).reverse());
+		return r;
+	}
+}, s = {
+	computeDct: (e) => {
+		let t = [...e].sort((e, t) => e - t)[127], n = new Uint8Array(32);
+		return e.forEach((e, r) => {
+			n[Math.floor(r / 8)] |= (e > t) << r % 8;
+		}), n;
+	},
+	toHex: (e) => Array.from(e, (e) => ("0" + (e & 255).toString(16)).slice(-2)).reverse().join("")
+}, c = {
+	r: .299,
+	g: .587,
+	b: .114
+}, l = (e) => {
+	let t = Array(e.length / 4);
+	for (let n = 0; n < e.length; n += 4) t[n / 4] = c.r * e[n] + c.g * e[n + 1] + c.b * e[n + 2];
+	return t;
+}, u = (e, t, n, r) => {
+	let i = new Float32Array(n * n);
+	for (let a = 0; a < n; a++) {
+		let o = Math.floor((a + .5) * t / n);
+		for (let t = 0; t < n; t++) {
+			let s = Math.floor((t + .5) * e / n);
+			i[a * n + t] = r[o * e + s];
+		}
+	}
+	return i;
+}, d = (e) => {
+	let t = Array(1024).fill(0), n = Array(256).fill(0), r = Array(1024).fill(0), i = Math.sqrt(2 / 64);
+	for (let e = 0; e < 16; e++) for (let n = 0; n < 64; n++) t[e * 64 + n] = i * Math.cos(Math.PI / 2 / 64 * (e + 1) * (2 * n + 1));
+	for (let n = 0; n < 16; n++) for (let i = 0; i < 64; i++) {
+		let a = 0;
+		for (let r = 0; r < 64; r++) a += t[n * 64 + r] * e[r * 64 + i];
+		r[n * 64 + i] = a;
+	}
+	for (let e = 0; e < 16; e++) for (let i = 0; i < 16; i++) {
+		let a = 0;
+		for (let n = 0; n < 64; n++) a += r[e * 64 + n] * t[i * 64 + n];
+		n[e * 16 + i] = a;
+	}
+	return n;
+}, f = (e, t) => {
+	let n = 0;
+	for (let r = 0; r < e - 1; r++) for (let i = 0; i < e; i++) {
+		let a = t[r * e + i], o = t[(r + 1) * e + i], s = Math.trunc((a - o) * 100 / 255);
+		n += Math.abs(s);
+	}
+	for (let r = 0; r < e; r++) for (let i = 0; i < e - 1; i++) {
+		let a = t[r * e + i], o = t[r * e + i + 1], s = Math.trunc((a - o) * 100 / 255);
+		n += Math.abs(s);
+	}
+	return Math.min(Math.trunc(n / 90), 100);
 };
-function C(r) {
-  return { ...R, ...r };
+//#endregion
+//#region src/distance.ts
+function p(e) {
+	return e.split("").map((e) => parseInt(e, 16).toString(2).padStart(4, "0")).join("").split("");
 }
-const v = (r, s, e, f) => {
-  const o = C(f), t = o.block, n = o.debug;
-  let c;
-  return Promise.resolve(r).then((l) => {
-    const a = N(l);
-    return n && M(s, e, a), a;
-  }).then((l) => {
-    const a = I(l, s, e, o.passes, t);
-    return n && M(s, e, a), a;
-  }).then((l) => {
-    const a = E(s, e, t, l);
-    return n && M(t, t, a), a;
-  }).then((l) => (c = P(t, l), l)).then((l) => {
-    const a = H(l);
-    return n && console.log(a), a;
-  }).then((l) => {
-    const a = { original: l };
-    return o.transform && (a.rot90 = u.rotate(l), a.flip = u.flip(l), a.rot180 = u.rotate(a.rot90), a.rot270 = u.rotate(a.rot180), a.fliprot90 = u.rotate(a.flip), a.fliprot180 = u.rotate(a.fliprot90), a.fliprot270 = u.rotate(a.fliprot180)), n && console.log(a), a;
-  }).then((l) => {
-    const a = [];
-    for (const d in l) {
-      const y = j.computeDct(l[d]), p = j.toHex(y);
-      a.push(p), n && b(y, o.hashscale);
-    }
-    return { type: "pdq", hash: o.transform ? a : a[0], quality: c };
-  });
-}, z = (r, s) => {
-  const e = C(s), f = e.debug, o = r.width, t = r.height;
-  return new Promise((n) => {
-    var c;
-    if (f) {
-      if (r instanceof OffscreenCanvas) {
-        const l = document.createElement("canvas");
-        l.width = r.width, l.height = r.height, (c = l.getContext("2d")) == null || c.drawImage(r, 0, 0), r = l;
-      }
-      document.body.appendChild(r);
-    }
-    n(r.getContext("2d").getImageData(0, 0, o, t).data);
-  }).then((n) => v(n, o, t, e));
+var m = (e, t) => {
+	if (e.length === t.length) {
+		let n = p(e), r = p(t);
+		return n.reduce((e, t, n) => e + (t === r[n] ? 0 : 1), 0);
+	}
+	return !1;
+}, h = {
+	debug: !1,
+	passes: 2,
+	block: 64,
+	transform: !1,
+	hashscale: 4
 };
-export {
-  z as default,
-  v as pdqRaw
+function g(e) {
+	return {
+		...h,
+		...e
+	};
+}
+var _ = (e, t, n, c) => {
+	let p = g(c), m = p.block, h = p.debug, _;
+	return Promise.resolve(e).then((e) => {
+		let r = l(e);
+		return h && i(t, n, r), r;
+	}).then((e) => {
+		let a = r(e, t, n, p.passes, m);
+		return h && i(t, n, a), a;
+	}).then((e) => {
+		let r = u(t, n, m, e);
+		return h && i(m, m, r), r;
+	}).then((e) => (_ = f(m, e), e)).then((e) => {
+		let t = d(e);
+		return h && console.log(t), t;
+	}).then((e) => {
+		let t = { original: e };
+		return p.transform && (t.rot90 = o.rotate(e), t.rot180 = o.rotate(t.rot90), t.rot270 = o.rotate(t.rot180), t.flip = o.flip(e), t.fliprot90 = o.rotate(t.flip), t.fliprot180 = o.rotate(t.fliprot90), t.fliprot270 = o.rotate(t.fliprot180)), h && console.log(t), t;
+	}).then((e) => {
+		let t = [];
+		for (let n in e) {
+			let r = s.computeDct(e[n]), i = s.toHex(r);
+			t.push(i), h && a(r, p.hashscale);
+		}
+		return {
+			type: "pdq",
+			hash: p.transform ? t : t[0],
+			quality: _
+		};
+	});
 };
+function v(e, t) {
+	let n = g(t), r = n.debug, i = e.width, a = e.height;
+	return new Promise((t) => {
+		if (r) {
+			if (e instanceof OffscreenCanvas) {
+				let t = document.createElement("canvas");
+				t.width = e.width, t.height = e.height, t.getContext("2d")?.drawImage(e, 0, 0), e = t;
+			}
+			document.body.appendChild(e);
+		}
+		t(e.getContext("2d").getImageData(0, 0, i, a).data);
+	}).then((e) => _(e, i, a, n));
+}
+//#endregion
+export { v as default, m as distance, _ as pdqRaw };
+
 //# sourceMappingURL=pdq.js.map
