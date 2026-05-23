@@ -4,8 +4,8 @@ const luma = {
 	b: 0.114,
 };
 
-export default (imgdata: Uint8ClampedArray): number[] => {
-	const data = Array<number>(imgdata.length / 4);
+export default (imgdata: Uint8ClampedArray): Uint8ClampedArray => {
+	const data = new Uint8ClampedArray(imgdata.length / 4);
 
 	// Convert the pixel data to luminance
 	for (let i = 0; i < imgdata.length; i += 4) {

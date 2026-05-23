@@ -7,8 +7,8 @@
  * The filter is applied to a flat array of pixel data, where each number corresponds to a pixel's luminance value.
  */
 function box1D(
-	input: number[],
-	output: number[],
+	input: Float32Array,
+	output: Float32Array,
 	inOffset: number,
 	outOffset: number,
 	length: number,
@@ -64,30 +64,33 @@ function box1D(
 	}
 }
 
-function boxAlongRows(input: number[], output: number[], width: number, height: number, windowSize: number): void {
+function boxAlongRows(input: Float32Array, output: Float32Array, width: number, height: number, windowSize: number): void {
 	for (let i = 0; i < height; i++) {
 		const offset = i * width;
 		box1D(input, output, offset, offset, width, 1, windowSize);
 	}
 }
 
-function boxAlongColumns(input: number[], output: number[], width: number, height: number, windowSize: number): void {
+function boxAlongColumns(input: Float32Array, output: Float32Array, width: number, height: number, windowSize: number): void {
 	for (let j = 0; j < width; j++) {
 		box1D(input, output, j, j, height, width, windowSize);
 	}
 }
 
-export default (data: number[], width: number, height: number, passes: number, block: number): number[] => {
+export default (data: Float32Array | Uint8ClampedArray, width: number, height: number, passes: number, block: number): Float32Array => {
+
+	// Uint8ClampedArray can't hold the float averages written back during the blur — convert once up front
+	const working = data instanceof Uint8ClampedArray ? new Float32Array(data) : data;
 
 	// copy data to temp array
-	const output = Array<number>(data.length).fill(0);
+	const output = new Float32Array(working.length);
 
 	// apply the filter
 	const winx = Math.floor((width + (2 * block) - 1) / (2 * block)),
 		winy = Math.floor((height + (2 * block) - 1) / (2 * block));
 	for (let i = 0; i < passes; i++) {
-		boxAlongRows(data, output, width, height, winx);
-		boxAlongColumns(output, data, width, height, winy);
+		boxAlongRows(working, output, width, height, winx);
+		boxAlongColumns(output, working, width, height, winy);
 	}
-	return data;
+	return working;
 };

@@ -65,7 +65,7 @@ describe("pdqRaw", () => {
 
 	it("produces the expected hash for a checkerboard image", async () => {
 		const result = await pdqRaw(makeCheckerRGBA(256, 256, 32), 256, 256);
-		expect(result.hash).toBe("5502ff2a552aff2a572aff2a5f2aff2a00d500d57f2a00d57f2a00d57f2a00d5");
+		expect(result.hash).toBe("5500ff2a552aff2a572aff2a5f2aff2a00d500d57f2a00d57f2a00d57f2a00d5");
 		expect(result.quality).toBe(100);
 	});
 

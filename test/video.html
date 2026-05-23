@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8" />
+		<title>JS PDQ / TMK / vPDQ Hash Test</title>
+		<style>
+			body {
+				font-family: Segoe UI, sans-serif;
+			}
+			.pdq__control {
+				padding: 3px 0;
+				display: flex;
+				align-items: center;
+			}
+			.pdq__label {
+				flex: 0 0 25%;
+				box-sizing: border-box;
+				padding-right: 10px;
+				text-align: right;
+			}
+			.pdq__input {
+				border: 1px solid #000;
+				padding: 10px;
+			}
+			.pdq__submit {
+				background: #000;
+				padding: 10px;
+				color: #FFF;
+				font-weight: bold;
+				margin-left: 25%;
+				border: 0;
+				width: 40%;
+			}
+			.pdq__progress {
+				margin: 30px 0 0 25%;
+				display: flex;
+				gap: 10px;
+			}
+			.pdq__progress > progress {
+				flex: 0 0 40%;
+				height: 15px;
+				appearance: none;
+			}
+			table, thead, tbody, tr, td, th {
+				padding: 0;
+				border: 0;
+				margin: 0;
+				border-collapse: separate;
+				border-spacing: 0;
+				text-align: left;
+			}
+			table {
+				margin: 15px 0;
+				padding: 0;
+				width: 100%;
+			}
+			th, td {
+				padding: 5px;
+				border-bottom: 1px solid #AAA;
+			}
+			td.pdq__hash {
+				font-family: monospace;
+				font-size: 11px;
+				word-break: break-all;
+				max-width: 300px;
+			}
+			td h4 {
+				margin: 6px 0 2px;
+				font-size: 11px;
+				text-transform: uppercase;
+				letter-spacing: 0.05em;
+			}
+			td h4:first-child {
+				margin-top: 0;
+			}
+			input, textarea, select, button {
+				font-family: inherit;
+				font-size: inherit;
+				line-height: inherit;
+			}
+		</style>
+	</head>
+	<body>
+		<section class="pdq__select">
+			<h1>PDQ / TMK / vPDQ Hash Test</h1>
+			<p>Select images and/or videos. Images are hashed with PDQ; videos are hashed with TMK and vPDQ. Select multiple videos to compare them pairwise.</p>
+			<div class="pdq__control">
+				<label class="pdq__label">Select Files:</label>
+				<input class="pdq__input" type="file" id="files" accept="image/*,video/mp4,video/*" multiple />
+			</div>
+			<div class="pdq__control">
+				<label class="pdq__label">Debug:</label>
+				<input class="pdq__input" type="checkbox" id="debug" value="" />
+			</div>
+			<div class="pdq__control">
+				<input class="pdq__submit" type="submit" id="start" value="Generate Hashes" />
+			</div>
+		</section>
+		<section class="pdq__results" id="results"></section>
+		<script type="module">
+			import pdq from "../dist/pdq.js";
+			import video from "../dist/video.js";
+			import compareTmk from "../dist/tmk-compare.js";
+
+			function toHex(float32) {
+				return Array.from(new Uint8Array(float32.buffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+			}
+
+			function tableRow(table, tag, items) {
+				const row = document.createElement("tr");
+				items.forEach(item => {
+					const cell = document.createElement(tag);
+					if (item instanceof Node) {
+						cell.appendChild(item);
+					} else if (Array.isArray(item)) {
+						item.forEach(value => {
+							const div = document.createElement("div");
+							div.textContent = value;
+							cell.appendChild(div);
+						});
+					} else {
+						cell.textContent = item;
+					}
+					row.appendChild(cell);
+				});
+				table.appendChild(row);
+				return row;
+			}
+
+			function hashNode(tmkDescriptor, vpdqFeatures) {
+				const frag = document.createDocumentFragment(),
+					h4tmk = document.createElement("h4"),
+					tmkInfoDiv = document.createElement("div"),
+					tmkHashDiv = document.createElement("div"),
+					h4vpdq = document.createElement("h4"),
+					tmkBytes = (tmkDescriptor.pureAverage.length + tmkDescriptor.cosFeatures.length + tmkDescriptor.sinFeatures.length) * 4,
+					tmkSizeKb = (tmkBytes / 1024).toFixed(0);
+
+				h4tmk.textContent = "PDQ-TMK";
+				tmkInfoDiv.textContent = tmkDescriptor.frameCount + " frames · " + tmkSizeKb + " KB";
+				tmkHashDiv.className = "pdq__hash";
+				tmkHashDiv.textContent = toHex(tmkDescriptor.pureAverage).slice(0, 64) + "…";
+
+				h4vpdq.textContent = "vPDQ";
+				frag.append(h4tmk, tmkInfoDiv, tmkHashDiv, h4vpdq);
+
+				if (vpdqFeatures && vpdqFeatures.length) {
+					const sizeKb = (vpdqFeatures.length * 32 / 1024).toFixed(2),
+						infoDiv = document.createElement("div"),
+						hashDiv = document.createElement("div");
+					infoDiv.textContent = vpdqFeatures.length + " features · " + sizeKb + " KB";
+					hashDiv.className = "pdq__hash";
+					hashDiv.textContent = vpdqFeatures[0].hex;
+					frag.append(infoDiv, hashDiv);
+				} else {
+					const dash = document.createElement("div");
+					dash.textContent = "—";
+					frag.appendChild(dash);
+				}
+				return frag;
+			}
+
+			document.addEventListener("DOMContentLoaded", () => {
+				document.getElementById("start").addEventListener("click", () => {
+					const allFiles = Array.from(document.getElementById("files").files),
+						imageFiles = allFiles.filter(f => f.type.startsWith("image/")),
+						videoFiles = allFiles.filter(f => f.type.startsWith("video/") || /\.(mp4|mov|webm|mkv)$/i.test(f.name));
+
+					if (!imageFiles.length && !videoFiles.length) return;
+
+					// track progress
+					let completedCount = 0,
+						items = allFiles.length,
+						start = performance.now();
+					const wrap = document.createElement("div"),
+						bar = document.createElement("progress"),
+						progress = document.createElement("span"),
+						remain = document.createElement("div"),
+						update = (videoFraction = 0) => {
+							const pos = completedCount + videoFraction,
+								percentage = (100 / items) * pos,
+								elapsed = performance.now() - start;
+							remain.textContent = pos > 0 ? Math.round((((elapsed / pos) * items) - elapsed) / 1000) + " secs" : "";
+							progress.textContent = Math.round(percentage) + "%";
+							bar.setAttribute("value", percentage);
+						};
+					bar.setAttribute("max", 100);
+					bar.setAttribute("value", 0);
+					progress.textContent = "0%";
+					wrap.classList.add("pdq__progress");
+					wrap.replaceChildren(bar, progress, remain);
+					document.getElementById("results").replaceChildren(wrap);
+
+					// process images in parallel
+					const imageProms = imageFiles.map(file => {
+						let width, height, timing = performance.now(), url;
+						return new Promise(success => {
+							const img = new Image();
+							img.onload = () => { URL.revokeObjectURL(url); success(img); };
+							url = URL.createObjectURL(file);
+							img.src = url;
+						})
+							.then(img => {
+								const canvas = document.createElement("canvas"),
+									context = canvas.getContext("2d");
+								canvas.imageSmoothingQuality = "high";
+								canvas.width = Math.min(img.width, img.height, 512);
+								canvas.height = Math.min(img.width, img.height, 512);
+								context.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
+								width = img.width;
+								height = img.height;
+								return canvas;
+							})
+							.then(canvas => pdq(canvas))
+							.then(result => {
+								completedCount++;
+								update();
+								return {file, width, height, hash: result, time: performance.now() - timing};
+							});
+					});
+
+					// process videos sequentially
+					const videoResults = [];
+					const processNextVideo = (idx) => {
+						if (idx >= videoFiles.length) return Promise.resolve();
+						const file = videoFiles[idx],
+							timing = performance.now();
+						return file.arrayBuffer()
+							.then(buf => video(buf, {
+								onprogress: (done, total) => {
+									update(total > 0 ? done / total : 0);
+								}
+							}))
+							.then(result => {
+								videoResults.push({file, tmk: result.tmk, vpdq: result.vpdq, time: performance.now() - timing});
+								completedCount++;
+								update();
+								return processNextVideo(idx + 1);
+							})
+							.catch(err => {
+								videoResults.push({file, tmk: null, vpdq: null, time: performance.now() - timing, error: err?.message || String(err)});
+								completedCount++;
+								update();
+								return processNextVideo(idx + 1);
+							});
+					};
+
+					Promise.all([Promise.all(imageProms), processNextVideo(0)]).then(([imageResults]) => {
+						const nodes = [];
+
+						// image results
+						if (imageResults.length) {
+							const heading = document.createElement("h1"),
+								table = document.createElement("table");
+							heading.textContent = "Image Results";
+							nodes.push(heading, table);
+
+							tableRow(table, "th", ["File", "Type", "Size", "Hash", "Quality", "Speed"]);
+							let totalTime = 0;
+							imageResults.forEach(r => {
+								tableRow(table, "td", [r.file.name, r.file.type, r.width + "x" + r.height, r.hash.hash, r.hash.quality, Math.round(r.time) + "ms"]);
+								totalTime += r.time;
+							});
+							tableRow(table, "td", ["", "", "", "", "Totals:", Math.round(totalTime) + "ms"]);
+						}
+
+						// video results
+						if (videoResults.length) {
+							const heading = document.createElement("h1"),
+								table = document.createElement("table");
+							heading.textContent = "Video Results";
+							nodes.push(heading, table);
+
+							const h4 = document.createElement("h4");
+							h4.textContent = "PDQ-TMK|vPDQ";
+							tableRow(table, "th", ["File", "Type", "Frames", h4, "Speed"]);
+							let totalTime = 0;
+							videoResults.forEach(r => {
+								const frames = r.error ? "Error: " + r.error : r.tmk.frameCount;
+								tableRow(table, "td", [r.file.name, r.file.type, frames, r.tmk ? hashNode(r.tmk, r.vpdq) : "—", Math.round(r.time) + "ms"]);
+								totalTime += r.time;
+							});
+							tableRow(table, "td", ["", "", "Totals:", "", Math.round(totalTime) + "ms"]);
+
+							// pairwise comparison matrix
+							const successfulVideos = videoResults.filter(r => !r.error);
+							if (successfulVideos.length >= 2) {
+								const compHeading = document.createElement("h1"),
+									matrix = document.createElement("table");
+								compHeading.textContent = "Pairwise Comparison (L1 ≥ 0.7 and L2 ≥ 0.7 = match)";
+								nodes.push(compHeading, matrix);
+
+								tableRow(matrix, "th", [""].concat(successfulVideos.map(r => r.file.name)));
+
+								successfulVideos.forEach((rA, i) => {
+									const tr = document.createElement("tr"),
+										th = document.createElement("th");
+									th.textContent = rA.file.name;
+									tr.appendChild(th);
+									successfulVideos.forEach((rB, j) => {
+										const td = document.createElement("td");
+										if (i === j) {
+											td.textContent = "—";
+										} else {
+											const cmp = compareTmk(rA.tmk, rB.tmk),
+												match = cmp.level1 >= 0.7 && cmp.level2 >= 0.7;
+											td.style.background = match ? "#d4edda" : "#f8d7da";
+											td.style.fontWeight = match ? "bold" : "normal";
+											[`L1: ${cmp.level1.toFixed(3)}`, `L2: ${cmp.level2.toFixed(3)}`].forEach(text => {
+												const div = document.createElement("div");
+												div.textContent = text;
+												td.appendChild(div);
+											});
+										}
+										tr.appendChild(td);
+									});
+									matrix.appendChild(tr);
+								});
+							}
+						}
+
+						document.getElementById("results").replaceChildren(...nodes);
+					});
+				});
+			});
+		</script>
+	</body>
+</html>

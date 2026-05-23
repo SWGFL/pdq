@@ -1,190 +1,72 @@
-/**
- * vPDQ (Video PDQ) — single entry point.
- *
- * Re-exports the complete vPDQ API for video similarity detection.
- * The default export is hashVideoUrl, mirroring how pdq.ts exports
- * its canvas-based hasher as the default.
- */
-import pdq, {type PdqConfig, pdqRaw} from "./pdq";
-import frame from "./frame";
+import distance from "./distance";
+import {computeDct, toHex} from "./hash-dct";
 
-export interface VpdqConfig extends PdqConfig {
-	fps?: number;
-}
+export class VpdqFeature {
+	pdqHash: Uint16Array;
+	frameNumber: number;
+	quality: number;
+	timeStamp: number;
 
-export default (video: HTMLVideoElement, config?: VpdqConfig) => {
+	constructor(pdqHash: Uint16Array, frameNumber: number, quality: number, timeStamp: number) {
+		this.pdqHash = pdqHash;
+		this.frameNumber = frameNumber;
+		this.quality = quality;
+		this.timeStamp = timeStamp;
+	}
 
-	// check we can access the video
-	if (video.readyState == HTMLMediaElement.HAVE_ENOUGH_DATA) {
-
-		// merge default config
-		const opts = Object.assign({
-			fps: 1
-		}, config);
-
-		// setup variables
-		const proms:Array<ReturnType<typeof pdq>> = [],
-			steps = video.duration / opts.fps,
-			width = video.width,
-			height = video.height;
-
-		// extract frames
-		for (let i = 0; i < steps; i++) {
-			const item = new Promise((resolve, reject) => {
-				resolve(frame(video, i));
-			})
-				.then(data => pdqRaw(data as Uint8ClampedArray, width, height));
-			proms.push(item);
-		}
-
-		// await completion
-		return Promise.all(proms).then(pdqs => {
-			console.log(pdqs);
-		});
+	get hex(): string {
+		return toHex(this.pdqHash);
 	}
 }
 
-// import { pdqHashFromRGBA } from "./vpdq/pdqhashing";
-// import { VpdqFeature } from "./vpdq/vpdqTypes";
+export interface VpdqOptions {
+	fps?: number;
+	pruneDistance?: number; // skip frames with Hamming distance ≤ this from the last retained frame
+	qualityTolerance?: number;
+	distanceTolerance?: number;
+	queryMatchThreshold?: number;
+	targetMatchThreshold?: number;
+}
 
-// export interface HashVideoOptions {
-// 	secondsPerHash?: number;
-// 	pruneDistance?: number;
-// }
 
+const defaultConfig = {
+	fps: 1, // vPDQ sample rate (default 1); frames are subsampled from the extraction fps
+	pruneDistance: 0, // skip frames with Hamming distance ≤ this from the last retained frame (0 = disabled)
+	qualityTolerance: 50, // minimum frame quality to include (default 50)
+	distanceTolerance: 31, // Hamming distance threshold for matching (default 31)
+	queryMatchThreshold: 80.0, // % of query frames that must match (default 80)
+	targetMatchThreshold: 0.0 // % of target frames that must match (default 0)
+};
 
-// function supportsWebCodecs(): boolean {
-// 	return typeof VideoFrame !== "undefined";
-// }
+export function getConfig(opts?: VpdqOptions) {
+	return { ...defaultConfig, ...opts };
+}
 
-// async function extractFrameWebCodecs(video: HTMLVideoElement): Promise<{ data: Uint8Array; width: number; height: number }> {
-// 	const frame = new VideoFrame(video, { timestamp: 0 });
-// 	const width = frame.displayWidth;
-// 	const height = frame.displayHeight;
+export default class Vpdq {
+	private features: VpdqFeature[];
+	private fps: number;
+	private interval: number;  // pipeline frames to skip between vPDQ samples
+	private opts: ReturnType<typeof getConfig>;
 
-// 	const size = frame.allocationSize({ format: "RGBA" });
-// 	const buffer = new Uint8Array(size);
-// 	await frame.copyTo(buffer, { format: "RGBA" });
-// 	frame.close();
+	constructor(extractFps: number, opts?: VpdqOptions) {
+		this.opts = getConfig(opts);
+		this.fps = extractFps;
+		this.interval = Math.max(1, Math.round(extractFps / this.opts.fps));
+		this.features = [];
+	}
 
-// 	return { data: buffer, width, height };
-// }
+	addFrame(pdqf: Float32Array, quality: number, frameIndex: number): void {
+		if (frameIndex % this.interval === 0 && quality >= this.opts.qualityTolerance) {
+			const hash = computeDct(pdqf),
+				pd = this.opts.pruneDistance;
+			if (pd === 0 || this.features.length === 0
+				|| distance(hash, this.features[this.features.length - 1].pdqHash) > pd) {
+				this.features.push(new VpdqFeature(hash, frameIndex, quality, frameIndex / this.fps));
+			}
+		}
+	}
 
-// function extractFrameCanvas(video: HTMLVideoElement, canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): { data: Uint8ClampedArray; width: number; height: number } {
-// 	ctx.drawImage(video, 0, 0);
-// 	const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-// 	return { data: imageData.data, width: canvas.width, height: canvas.height };
-// }
-
-// /**
-//  * Hash a video from a URL. Seeks at secondsPerHash intervals (default 1.0),
-//  * extracts frames via WebCodecs (or Canvas fallback), and returns vPDQ features.
-//  */
-// async function hashVideoUrl(videoUrl: string, options: HashVideoOptions = {}): Promise<VpdqFeature[]> {
-// 	const { secondsPerHash = 1.0, pruneDistance } = options;
-
-// 	if (typeof document === "undefined") {
-// 		throw new Error("hashVideoUrl requires a browser environment with DOM");
-// 	}
-
-// 	const video = document.createElement("video");
-// 	video.crossOrigin = "anonymous";
-// 	video.muted = true;
-// 	video.preload = "auto";
-
-// 	await new Promise<Event>((resolve, reject) => {
-// 		video.onloadedmetadata = resolve;
-// 		video.onerror = () =>
-// 			reject(new Error(`Failed to load video: ${videoUrl}`));
-// 		video.src = videoUrl;
-// 	});
-
-// 	const useWebCodecs = supportsWebCodecs();
-
-// 	let canvas: HTMLCanvasElement | undefined;
-// 	let ctx: CanvasRenderingContext2D | undefined;
-// 	if (!useWebCodecs) {
-// 		canvas = document.createElement("canvas");
-// 		canvas.width = video.videoWidth;
-// 		canvas.height = video.videoHeight;
-// 		ctx = canvas.getContext("2d")!;
-// 	}
-
-// 	const features: VpdqFeature[] = [];
-// 	const duration = video.duration;
-// 	let frameNumber = 0;
-
-// 	for (
-// 		let timeStamp = 0;
-// 		timeStamp < duration;
-// 		timeStamp += secondsPerHash, frameNumber++
-// 	) {
-// 		await new Promise<Event>((resolve) => {
-// 			video.onseeked = resolve;
-// 			video.currentTime = timeStamp;
-// 		});
-
-// 		let frameData: { data: Uint8Array | Uint8ClampedArray; width: number; height: number };
-// 		if (useWebCodecs) {
-// 			frameData = await extractFrameWebCodecs(video);
-// 		} else {
-// 			frameData = extractFrameCanvas(video, canvas!, ctx!);
-// 		}
-
-// 		const { hash, quality } = pdqHashFromRGBA(
-// 			frameData.data,
-// 			frameData.height,
-// 			frameData.width
-// 		);
-
-// 		if (pruneDistance !== undefined && features.length > 0) {
-// 			const lastRetained = features[features.length - 1];
-// 			if (hash.hammingDistance(lastRetained.pdqHash) <= pruneDistance) {
-// 				continue;
-// 			}
-// 		}
-
-// 		features.push(new VpdqFeature(hash, frameNumber, quality, timeStamp));
-// 	}
-
-// 	return features;
-// }
-
-// export default hashVideoUrl;
-
-// export {
-// 	hashVideoUrl,
-// };
-
-// export {
-// 	Hash256,
-// 	pdqHashFromRGBA,
-// 	pdqHash256FromFloatLuma,
-// 	fillFloatLumaFromRGBA,
-// 	fillFloatLumaFromRGB,
-// 	fillFloatLumaFromGrey,
-// 	VpdqFeature,
-// 	VpdqMatchResult,
-// 	VPDQ_DISTANCE_THRESHOLD,
-// 	VPDQ_QUALITY_THRESHOLD,
-// 	VPDQ_QUERY_MATCH_THRESHOLD_PERCENT,
-// 	VPDQ_INDEX_MATCH_THRESHOLD_PERCENT,
-// 	matchTwoHashBrute,
-// 	isMatch,
-// 	featuresToCppFormat,
-// 	featuresFromCppFormat,
-// 	featuresToJson,
-// 	featuresFromJson,
-// 	dedupeFeatures,
-// 	qualityFilterFeatures,
-// 	prepareFeatures,
-// 	hashFrames,
-// 	pruneFrames,
-// } from "./vpdq/index";
-
-// export type {
-// 	PdqHashResult,
-// 	IsMatchOptions,
-// 	IsMatchResult,
-// 	FrameData,
-// } from "./vpdq/index";
+	compile(): VpdqFeature[] {
+		return this.features;
+	}
+}

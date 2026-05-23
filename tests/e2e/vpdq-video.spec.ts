@@ -1,211 +1,176 @@
 import { test, expect } from "@playwright/test";
 
 const HARNESS = "/tests/e2e/harness.html";
-const ASSETS = "/tests/assets";
+const ASSETS  = "/tests/assets";
 
 test.beforeEach(async ({ page }) => {
 	await page.goto(HARNESS);
 	await page.waitForFunction(() => (window as any).__ready === true);
 });
 
-test.describe("vPDQ video hashing", () => {
-	test("hashes a real video and returns features", async ({ page }) => {
-		const result = await page.evaluate(async (src) => {
-			const { hashVideoUrl } = (window as any).__vpdq;
-			const features = await hashVideoUrl(src, { secondsPerHash: 1.0 });
-			return features.map((f: any) => ({
-				frameNumber: f.frameNumber,
-				quality: f.quality,
-				timeStamp: f.timeStamp,
-				hex: f.pdqHash.toHexString(),
-			}));
-		}, `${ASSETS}/cat.mp4`);
+// ---------------------------------------------------------------------------
+// Basic structure
+// ---------------------------------------------------------------------------
 
-		expect(result.length).toBeGreaterThan(0);
-		for (const f of result) {
+test.describe("vPDQ basic structure", () => {
+	test("returns features with valid fields", async ({ page }) => {
+		const features = await page.evaluate(async (src) => {
+			const buf    = await fetch(src).then(r => r.arrayBuffer()),
+				result = await (window as any).__video(buf, {tmk: false});
+			return result.vpdq.map((f: any) => ({
+				frameNumber: f.frameNumber,
+				quality:     f.quality,
+				hex:         f.hex,
+				timeStamp:   f.timeStamp,
+			}));
+		}, `${ASSETS}/doorknob-hd-no-bar.mp4`);
+
+		expect(features.length).toBeGreaterThan(0);
+		for (const f of features) {
 			expect(typeof f.frameNumber).toBe("number");
 			expect(f.quality).toBeGreaterThanOrEqual(0);
 			expect(f.quality).toBeLessThanOrEqual(100);
-			expect(f.hex).toHaveLength(64);
+			expect(f.hex).toMatch(/^[0-9a-f]{64}$/);
 			expect(f.timeStamp).toBeGreaterThanOrEqual(0);
-		}
-	});
-
-	test("frame numbers are sequential", async ({ page }) => {
-		const frameNumbers = await page.evaluate(async (src) => {
-			const { hashVideoUrl } = (window as any).__vpdq;
-			const features = await hashVideoUrl(src, { secondsPerHash: 1.0 });
-			return features.map((f: any) => f.frameNumber);
-		}, `${ASSETS}/cat.mp4`);
-
-		for (let i = 0; i < frameNumbers.length; i++) {
-			expect(frameNumbers[i]).toBe(i);
-		}
-	});
-
-	test("timestamps increment by secondsPerHash", async ({ page }) => {
-		const timestamps = await page.evaluate(async (src) => {
-			const { hashVideoUrl } = (window as any).__vpdq;
-			const features = await hashVideoUrl(src, { secondsPerHash: 2.0 });
-			return features.map((f: any) => f.timeStamp);
-		}, `${ASSETS}/plane.mp4`);
-
-		expect(timestamps.length).toBeGreaterThan(0);
-		for (let i = 0; i < timestamps.length; i++) {
-			expect(timestamps[i]).toBeCloseTo(i * 2.0, 1);
 		}
 	});
 
 	test("produces deterministic hashes for the same video", async ({ page }) => {
 		const [hashes1, hashes2] = await page.evaluate(async (src) => {
-			const { hashVideoUrl } = (window as any).__vpdq;
-			const f1 = await hashVideoUrl(src, { secondsPerHash: 1.0 });
-			const f2 = await hashVideoUrl(src, { secondsPerHash: 1.0 });
+			const buf = await fetch(src).then(r => r.arrayBuffer()),
+				r1  = await (window as any).__video(buf.slice(0), {tmk: false}),
+				r2  = await (window as any).__video(buf.slice(0), {tmk: false});
 			return [
-				f1.map((f: any) => f.pdqHash.toHexString()),
-				f2.map((f: any) => f.pdqHash.toHexString()),
+				r1.vpdq.map((f: any) => f.hex),
+				r2.vpdq.map((f: any) => f.hex),
 			];
-		}, `${ASSETS}/cat.mp4`);
+		}, `${ASSETS}/doorknob-hd-no-bar.mp4`);
 
 		expect(hashes1).toEqual(hashes2);
 	});
+});
 
-	test("different videos produce different hashes", async ({ page }) => {
-		const [catHashes, planeHashes] = await page.evaluate(async (assets) => {
-			const { hashVideoUrl } = (window as any).__vpdq;
-			const cat = await hashVideoUrl(`${assets}/cat.mp4`, { secondsPerHash: 1.0 });
-			const plane = await hashVideoUrl(`${assets}/plane.mp4`, { secondsPerHash: 1.0 });
-			return [
-				cat.map((f: any) => f.pdqHash.toHexString()),
-				plane.map((f: any) => f.pdqHash.toHexString()),
-			];
-		}, ASSETS);
+// ---------------------------------------------------------------------------
+// C++ reference comparison
+// ---------------------------------------------------------------------------
 
-		// at least the first frame should differ
-		expect(catHashes[0]).not.toBe(planeHashes[0]);
+test.describe("vPDQ C++ reference comparison", () => {
+	test("feature count matches reference at 30 fps", async ({ page }) => {
+		const { featureCount, refCount } = await page.evaluate(async ([src, ref]) => {
+			const [buf, refText] = await Promise.all([
+				fetch(src).then(r => r.arrayBuffer()),
+				fetch(ref).then(r => r.text()),
+			]),
+				result   = await (window as any).__video(buf, {
+					tmk:  false,
+					fps:  30,
+					vpdq: {fps: 30, qualityTolerance: 0},
+				}),
+				refLines = refText.trim().split("\n").filter((l: string) => l).length;
+			return {featureCount: result.vpdq.length, refCount: refLines};
+		}, [`${ASSETS}/doorknob-hd-no-bar.mp4`, `${ASSETS}/doorknob-hd-no-bar.txt`]);
+
+		console.log(`Feature count: ours=${featureCount}  reference=${refCount}`);
+		expect(featureCount).toBe(refCount);
 	});
 
-	test("pruneFrames reduces identical consecutive frames", async ({ page }) => {
-		const [totalFrames, prunedFrames] = await page.evaluate(async (src) => {
-			const { hashVideoUrl, pruneFrames } = (window as any).__vpdq;
-			const features = await hashVideoUrl(src, { secondsPerHash: 0.5 });
-			const pruned = pruneFrames(features, 10);
-			return [features.length, pruned.length];
-		}, `${ASSETS}/cat.mp4`);
+	test("high-quality frame hashes are within 20 bits of C++ reference", async ({ page }) => {
+		const distances = await page.evaluate(async ([src, ref]) => {
+			function hammingDistance(h1: string, h2: string) {
+				let dist = 0;
+				for (let i = 0; i < 64; i += 4) {
+					let x = parseInt(h1.slice(i, i + 4), 16) ^ parseInt(h2.slice(i, i + 4), 16);
+					while (x) { dist += x & 1; x >>>= 1; }
+				}
+				return dist;
+			}
 
-		expect(totalFrames).toBeGreaterThan(0);
-		expect(prunedFrames).toBeLessThanOrEqual(totalFrames);
-		expect(prunedFrames).toBeGreaterThan(0);
-	});
+			const [buf, refText] = await Promise.all([
+				fetch(src).then(r => r.arrayBuffer()),
+				fetch(ref).then(r => r.text()),
+			]),
+				result      = await (window as any).__video(buf, {
+					tmk:  false,
+					fps:  30,
+					vpdq: {fps: 30, qualityTolerance: 0},
+				}),
+				refFeatures = refText.trim().split("\n").filter((l: string) => l).map((line: string) => {
+					const [, q, hash] = line.split(",");
+					return {quality: parseInt(q), hash: hash.trim()};
+				});
 
-	test("pruneDistance option skips similar frames during hashing", async ({ page }) => {
-		const [allFrames, prunedFrames] = await page.evaluate(async (src) => {
-			const { hashVideoUrl } = (window as any).__vpdq;
-			const all = await hashVideoUrl(src, { secondsPerHash: 0.5 });
-			const pruned = await hashVideoUrl(src, { secondsPerHash: 0.5, pruneDistance: 10 });
-			return [all.length, pruned.length];
-		}, `${ASSETS}/cat.mp4`);
+			return result.vpdq.map((f: any, i: number) => {
+				const r = refFeatures[i];
+				return r ? {quality: r.quality, dist: hammingDistance(f.hex, r.hash)} : null;
+			}).filter((x: any) => x && x.quality >= 50).map((x: any) => x.dist);
+		}, [`${ASSETS}/doorknob-hd-no-bar.mp4`, `${ASSETS}/doorknob-hd-no-bar.txt`]);
 
-		expect(allFrames).toBeGreaterThan(0);
-		expect(prunedFrames).toBeLessThanOrEqual(allFrames);
-		expect(prunedFrames).toBeGreaterThan(0);
+		expect(distances.length).toBeGreaterThan(0);
+		const avg = (distances as number[]).reduce((a, b) => a + b, 0) / distances.length,
+			max = Math.max(...distances as number[]);
+		console.log(`Hamming distances (quality ≥ 50): avg=${avg.toFixed(1)}  max=${max}  frames=${distances.length}`);
+		expect(max).toBeLessThanOrEqual(20);
 	});
 });
 
-test.describe("vPDQ video matching", () => {
-	test("same video matches itself at 100%", async ({ page }) => {
-		const result = await page.evaluate(async (src) => {
-			const { hashVideoUrl, matchTwoHashBrute } = (window as any).__vpdq;
-			const features = await hashVideoUrl(src, { secondsPerHash: 1.0 });
-			const match = matchTwoHashBrute(features, features, 31, 50);
-			return {
-				queryMatchPercent: match.queryMatchPercent,
-				comparedMatchPercent: match.comparedMatchPercent,
-			};
-		}, `${ASSETS}/cat.mp4`);
+// ---------------------------------------------------------------------------
+// Matching
+// ---------------------------------------------------------------------------
 
-		expect(result.queryMatchPercent).toBe(100);
-		expect(result.comparedMatchPercent).toBe(100);
+test.describe("vPDQ matching", () => {
+	test("self-comparison returns 100% on both sides", async ({ page }) => {
+		const result = await page.evaluate(async (src) => {
+			const buf   = await fetch(src).then(r => r.arrayBuffer()),
+				{vpdq} = await (window as any).__video(buf, {tmk: false}),
+				match  = (window as any).__compareVpdq(vpdq, vpdq);
+			return {q: match.queryMatchPercent, c: match.comparedMatchPercent};
+		}, `${ASSETS}/doorknob-hd-no-bar.mp4`);
+
+		expect(result.q).toBe(100);
+		expect(result.c).toBe(100);
 	});
 
 	test("different videos have low match percentage", async ({ page }) => {
-		const result = await page.evaluate(async (assets) => {
-			const { hashVideoUrl, matchTwoHashBrute } = (window as any).__vpdq;
-			const cat = await hashVideoUrl(`${assets}/cat.mp4`, { secondsPerHash: 1.0 });
-			const plane = await hashVideoUrl(`${assets}/plane.mp4`, { secondsPerHash: 1.0 });
-			const match = matchTwoHashBrute(cat, plane, 31, 50);
-			return {
-				queryMatchPercent: match.queryMatchPercent,
-				comparedMatchPercent: match.comparedMatchPercent,
-			};
-		}, ASSETS);
+		const result = await page.evaluate(async ([a, b]) => {
+			const [bufA, bufB] = await Promise.all([
+				fetch(a).then(r => r.arrayBuffer()),
+				fetch(b).then(r => r.arrayBuffer()),
+			]),
+				[rA, rB] = await Promise.all([
+					(window as any).__video(bufA, {tmk: false}),
+					(window as any).__video(bufB, {tmk: false}),
+				]),
+				match = (window as any).__compareVpdq(rA.vpdq, rB.vpdq);
+			return {q: match.queryMatchPercent, c: match.comparedMatchPercent};
+		}, [`${ASSETS}/doorknob-hd-no-bar.mp4`, `${ASSETS}/chair-19-sd-bar.mp4`]);
 
-		expect(result.queryMatchPercent).toBeLessThan(50);
-		expect(result.comparedMatchPercent).toBeLessThan(50);
-	});
-
-	test("isMatch returns false for different videos", async ({ page }) => {
-		const matched = await page.evaluate(async (assets) => {
-			const { hashVideoUrl, isMatch } = (window as any).__vpdq;
-			const cat = await hashVideoUrl(`${assets}/cat.mp4`, { secondsPerHash: 1.0 });
-			const plane = await hashVideoUrl(`${assets}/plane.mp4`, { secondsPerHash: 1.0 });
-			return isMatch(cat, plane).isMatch;
-		}, ASSETS);
-
-		expect(matched).toBe(false);
+		expect(result.q).toBeLessThan(50);
+		expect(result.c).toBeLessThan(50);
 	});
 
 	test("isMatch returns true for same video", async ({ page }) => {
 		const matched = await page.evaluate(async (src) => {
-			const { hashVideoUrl, isMatch } = (window as any).__vpdq;
-			const features = await hashVideoUrl(src, { secondsPerHash: 1.0 });
-			return isMatch(features, features).isMatch;
-		}, `${ASSETS}/friends.mp4`);
+			const buf   = await fetch(src).then(r => r.arrayBuffer()),
+				{vpdq} = await (window as any).__video(buf, {tmk: false});
+			return (window as any).__isMatchVpdq(vpdq, vpdq).isMatch;
+		}, `${ASSETS}/doorknob-hd-no-bar.mp4`);
 
 		expect(matched).toBe(true);
 	});
-});
 
-test.describe("vPDQ serialization with real data", () => {
-	test("C++ format roundtrip preserves video hashes", async ({ page }) => {
-		const result = await page.evaluate(async (src) => {
-			const { hashVideoUrl, featuresToCppFormat, featuresFromCppFormat } = (window as any).__vpdq;
-			const features = await hashVideoUrl(src, { secondsPerHash: 1.0 });
-			const text = featuresToCppFormat(features);
-			const loaded = featuresFromCppFormat(text);
-			return {
-				originalCount: features.length,
-				loadedCount: loaded.length,
-				hashesMatch: features.every((f: any, i: number) =>
-					f.pdqHash.toHexString() === loaded[i].pdqHash.toHexString()
-				),
-				qualitiesMatch: features.every((f: any, i: number) =>
-					f.quality === loaded[i].quality
-				),
-			};
-		}, `${ASSETS}/cat.mp4`);
+	test("isMatch returns false for different videos", async ({ page }) => {
+		const matched = await page.evaluate(async ([a, b]) => {
+			const [bufA, bufB] = await Promise.all([
+				fetch(a).then(r => r.arrayBuffer()),
+				fetch(b).then(r => r.arrayBuffer()),
+			]),
+				[rA, rB] = await Promise.all([
+					(window as any).__video(bufA, {tmk: false}),
+					(window as any).__video(bufB, {tmk: false}),
+				]);
+			return (window as any).__isMatchVpdq(rA.vpdq, rB.vpdq).isMatch;
+		}, [`${ASSETS}/doorknob-hd-no-bar.mp4`, `${ASSETS}/chair-19-sd-bar.mp4`]);
 
-		expect(result.loadedCount).toBe(result.originalCount);
-		expect(result.hashesMatch).toBe(true);
-		expect(result.qualitiesMatch).toBe(true);
-	});
-
-	test("JSON format roundtrip preserves video hashes", async ({ page }) => {
-		const result = await page.evaluate(async (src) => {
-			const { hashVideoUrl, featuresToJson, featuresFromJson } = (window as any).__vpdq;
-			const features = await hashVideoUrl(src, { secondsPerHash: 1.0 });
-			const json = featuresToJson(features);
-			const loaded = featuresFromJson(json);
-			return {
-				originalCount: features.length,
-				loadedCount: loaded.length,
-				hashesMatch: features.every((f: any, i: number) =>
-					f.pdqHash.toHexString() === loaded[i].pdqHash.toHexString()
-				),
-			};
-		}, `${ASSETS}/plane.mp4`);
-
-		expect(result.loadedCount).toBe(result.originalCount);
-		expect(result.hashesMatch).toBe(true);
+		expect(matched).toBe(false);
 	});
 });
