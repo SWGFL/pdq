@@ -4,7 +4,7 @@ import { variance } from "./helpers";
 
 describe("jarosz filter", () => {
 	it("leaves uniform data approximately unchanged", () => {
-		const data = Array(64).fill(128);
+		const data = new Float32Array(64).fill(128);
 		const result = jarosz(data, 8, 8, 2, 64);
 		result.forEach(val => {
 			expect(val).toBeCloseTo(128, 0);
@@ -12,7 +12,7 @@ describe("jarosz filter", () => {
 	});
 
 	it("returns the same array reference (mutates in-place)", () => {
-		const data = Array(64).fill(128);
+		const data = new Float32Array(64).fill(128);
 		const result = jarosz(data, 8, 8, 2, 64);
 		expect(result).toBe(data);
 	});
@@ -20,27 +20,27 @@ describe("jarosz filter", () => {
 	it("reduces variance of noisy data with large image", () => {
 		// need large enough image for the window calc to produce a non-zero radius
 		const size = 256;
-		const data = Array.from({ length: size * size }, (_, i) => (i % 2 === 0) ? 200 : 50);
+		const data = Float32Array.from({ length: size * size }, (_, i) => (i % 2 === 0) ? 200 : 50);
 		const originalVariance = variance([...data]);
 		jarosz(data, size, size, 2, 64);
-		const filteredVariance = variance(data);
+		const filteredVariance = variance([...data]);
 		expect(filteredVariance).toBeLessThan(originalVariance);
 	});
 
 	it("more passes produces smoother output", () => {
 		const size = 512;
-		const data1 = Array.from({ length: size * size }, (_, i) => (i % 2 === 0) ? 200 : 50);
-		const data2 = [...data1];
+		const data1 = Float32Array.from({ length: size * size }, (_, i) => (i % 2 === 0) ? 200 : 50);
+		const data2 = new Float32Array(data1);
 		jarosz(data1, size, size, 1, 64);
 		jarosz(data2, size, size, 2, 64);
-		expect(variance(data2)).toBeLessThan(variance(data1));
+		expect(variance([...data2])).toBeLessThan(variance([...data1]));
 	});
 
 	it("works with realistic large image data", () => {
 		const size = 256;
-		const data = Array.from({ length: size * size }, (_, i) => Math.round(Math.sin(i / 100) * 100 + 128));
+		const data = Float32Array.from({ length: size * size }, (_, i) => Math.round(Math.sin(i / 100) * 100 + 128));
 		const originalVariance = variance([...data]);
 		jarosz(data, size, size, 2, 64);
-		expect(variance(data)).toBeLessThan(originalVariance);
+		expect(variance([...data])).toBeLessThan(originalVariance);
 	});
 });

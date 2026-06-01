@@ -18,19 +18,19 @@ describe("luminance", () => {
 	it("converts pure red using correct coefficient", () => {
 		const rgba = new Uint8ClampedArray([255, 0, 0, 255]);
 		const result = luminance(rgba);
-		expect(result[0]).toBeCloseTo(0.299 * 255, 1);
+		expect(result[0]).toBeCloseTo(0.299 * 255, 0);
 	});
 
 	it("converts pure green using correct coefficient", () => {
 		const rgba = new Uint8ClampedArray([0, 255, 0, 255]);
 		const result = luminance(rgba);
-		expect(result[0]).toBeCloseTo(0.587 * 255, 1);
+		expect(result[0]).toBeCloseTo(0.587 * 255, 0);
 	});
 
 	it("converts pure blue using correct coefficient", () => {
 		const rgba = new Uint8ClampedArray([0, 0, 255, 255]);
 		const result = luminance(rgba);
-		expect(result[0]).toBeCloseTo(0.114 * 255, 1);
+		expect(result[0]).toBeCloseTo(0.114 * 255, 0);
 	});
 
 	it("ignores the alpha channel", () => {

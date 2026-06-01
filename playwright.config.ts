@@ -7,14 +7,18 @@ export default defineConfig({
 		baseURL: "http://localhost:5173",
 	},
 	webServer: {
-		command: "npx vite --port 5173",
+		command: "npx vite --port 5173 --force",
 		port: 5173,
-		reuseExistingServer: true,
+		reuseExistingServer: !process.env.CI,
 	},
 	projects: [
 		{
 			name: "chromium",
 			use: { browserName: "chromium" },
+		},
+		{
+			name: "firefox",
+			use: { browserName: "firefox" },
 		},
 	],
 });

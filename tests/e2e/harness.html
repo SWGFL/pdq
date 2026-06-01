@@ -1,38 +1,14 @@
 <!DOCTYPE html>
 <html>
-<head>
-	<title>PDQ Test Harness</title>
-</head>
+<head><title>Video Test Harness</title></head>
 <body>
-	<script type="module">
-		import pdq from "../../src/pdq.ts";
-		import vpdq, {
-			hashFrames,
-			pruneFrames,
-			matchTwoHashBrute,
-			isMatch,
-			pdqHashFromRGBA,
-			featuresToCppFormat,
-			featuresFromCppFormat,
-			featuresToJson,
-			featuresFromJson,
-		} from "../../src/vpdq.ts";
-
-		// Expose everything to the window for Playwright to call
-		window.__pdq = pdq;
-		window.__vpdq = {
-			hashVideoUrl: vpdq,
-			hashFrames,
-			pruneFrames,
-			matchTwoHashBrute,
-			isMatch,
-			pdqHashFromRGBA,
-			featuresToCppFormat,
-			featuresFromCppFormat,
-			featuresToJson,
-			featuresFromJson,
-		};
-		window.__ready = true;
-	</script>
+<script type="module">
+	import video from "../../dist/video.js";
+	import { compare as compareVpdq, isMatch as isMatchVpdq } from "../../dist/vpdq-compare.js";
+	window.__video = video;
+	window.__compareVpdq = compareVpdq;
+	window.__isMatchVpdq = isMatchVpdq;
+	window.__ready = true;
+</script>
 </body>
 </html>

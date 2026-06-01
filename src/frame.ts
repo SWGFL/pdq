@@ -1,60 +1,95 @@
 
-type FrameData = {
-	data: Uint8Array | Uint8ClampedArray;
-	width: number;
-	height: number;
-};
+type ExtractedFrame = { videoFrame: VideoFrame; frameIndex: number };
 
-/**
- * Extract frames from a video using the WebCodecs API
- * 
- * @param video The video element that contains the video to extract frames from
- * @returns Promise
- */
-function extractFrameWebCodecs(video: HTMLVideoElement) : Promise<FrameData> {
-	const frame = new VideoFrame(video, { timestamp: 0 }),
-		width = frame.displayWidth,
-		height = frame.displayHeight,
-		size = frame.allocationSize({ format: "RGBA" }),
-		buffer = new Uint8Array(size);
-	return frame.copyTo(buffer, { format: "RGBA" }).then(() => {
-		frame.close();
-		return { data: new Uint8ClampedArray(buffer.buffer), width, height };
-	});
-}
+const mp4box = "./mp4box.all.js"; // separate variable so it doesn't get inlined
 
-let canvas: OffscreenCanvas|undefined,
-	ctx: OffscreenCanvasRenderingContext2D|undefined|null;
-
-function extractFrameCanvas(video: HTMLVideoElement) : Promise<FrameData> {
-
-	// generate a reusable canvas object
-	if (ctx === undefined) {
-		canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight);
-		ctx = canvas.getContext("2d");
-	}
+export default function extractVideoFrames(
+	source: ArrayBuffer,
+	fps: number,
+	onframe: (frame: ExtractedFrame) => void,
+	ontotal?: (total: number) => void
+): Promise<void> {
 	return new Promise((resolve, reject) => {
-		if (canvas && ctx) {
-			canvas.width = video.width;
-			canvas.height = video.height;
-			ctx.drawImage(video, 0, 0);
-			const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-			resolve({ data: imageData.data, width: canvas.width, height: canvas.height });
-		} else {
-			reject();
-		}
+		import(new URL(mp4box, import.meta.url).href)
+			.then(({createFile, DataStream}: {createFile: () => any; DataStream: any}) => {
+
+				// setup tracking variables
+				let timescale = 0,
+					totalSamples = 0,
+					samplesReceived = 0,
+					frameIndex = 0,
+					lastIdxAtFps = -1,
+					decoded = 0,
+					decoder: VideoDecoder | null = null;
+				const mp4file = createFile();
+
+				mp4file.onReady = (info: any) => {
+					const videoTrack = info.tracks.find((t: any) => t.video);
+					if (videoTrack) {
+						timescale = videoTrack.timescale;
+						totalSamples = videoTrack.nb_samples;
+						ontotal?.(Math.round((info.duration / info.timescale) * fps));
+
+						let description: Uint8Array | undefined;
+						const entry = mp4file.getTrackById(videoTrack.id)
+							?.mdia?.minf?.stbl?.stsd?.entries?.[0];
+						const codecBox = entry?.avcC ?? entry?.hvcC ?? entry?.vpcC ?? entry?.av1C;
+						if (codecBox) {
+							const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
+							codecBox.write(stream);
+							description = new Uint8Array(stream.buffer.slice(8));
+						}
+
+						decoder = new VideoDecoder({
+							output: (frame: VideoFrame) => {
+								const idxAtFps = Math.round((frame.timestamp / 1_000_000) * fps);
+								if (idxAtFps > lastIdxAtFps) {
+									lastIdxAtFps = idxAtFps;
+									onframe({videoFrame: frame, frameIndex: frameIndex++});
+								} else {
+									frame.close();
+								}
+								if (++decoded >= totalSamples) {
+									resolve();
+								}
+							},
+							error: reject,
+						});
+
+						decoder.configure({
+							codec: videoTrack.codec,
+							codedWidth: videoTrack.video.width,
+							codedHeight: videoTrack.video.height,
+							...(description ? {description} : {}),
+						});
+
+						mp4file.setExtractionOptions(videoTrack.id, null, {nbSamples: totalSamples});
+						mp4file.start();
+					} else {
+						reject(new Error("No video track found"));
+					}
+				};
+
+				mp4file.onSamples = (_id: number, _user: unknown, samples: any[]) => {
+					for (const sample of samples) {
+						decoder!.decode(new EncodedVideoChunk({
+							type: sample.is_sync ? "key" : "delta",
+							timestamp: (sample.cts * 1_000_000) / timescale,
+							duration: (sample.duration * 1_000_000) / timescale,
+							data: sample.data,
+						}));
+						samplesReceived++;
+					}
+					if (samplesReceived >= totalSamples) {
+						decoder!.flush().then(resolve);
+					}
+				};
+
+				const buf = source.slice(0) as ArrayBuffer & {fileStart: number};
+				buf.fileStart = 0;
+				mp4file.appendBuffer(buf);
+				mp4file.flush();
+			})
+			.catch(reject);
 	});
-}
-
-export default (video: HTMLVideoElement, pos: number) : Promise<FrameData> => {
-
-	// seek to frame position
-	video.currentTime = pos;
-
-	// extract video frame
-	if (typeof VideoFrame !== "undefined") {
-		return extractFrameWebCodecs(video);
-	} else {
-		return extractFrameCanvas(video);
-	}
 }

@@ -1,22 +1,22 @@
-/**
- * Hashing functions for perceptual hashing.
- * The computeDct function computes the discrete cosine transform (DCT) of a block of pixel data and generates a hash based on the DCT values.
- * The toHex function converts a Uint8Array of bytes into a hexadecimal string representation.
- * The computeDct function works by first calculating the median value of the DCT coefficients, and then creating a hash where each bit is set based on whether the corresponding DCT coefficient is greater than the median.
- * The resulting hash is a 32-byte (256-bit) value that can be used for comparing images based on their perceptual similarity.
- */
-export default {
-	computeDct: (dct: number[]): Uint8Array => {
+// Thresholds 256 DCT floats against their global median, returning a 256-bit hash as Uint16Array(16).
+// Bit k is set when dct[k] > median; global median matches the C++ reference (torben over all 256 values).
+export function computeDct(dct: Float32Array): Uint16Array {
+	const median = [...dct].sort((a, b) => a - b)[127],
+		words = new Uint16Array(16);
+	for (let k = 0; k < 256; k++) {
+		if (dct[k] > median) {
+			words[k >> 4] |= 1 << (k & 15);
+		}
+	}
+	return words;
+}
 
-		// get the middle value
-		const median = [...dct].sort((a, b) => a - b)[127];
+export function toHex(words: Uint16Array): string {
+	let hex = "";
+	for (let i = words.length - 1; i >= 0; i--) {
+		hex += words[i].toString(16).padStart(4, "0");
+	}
+	return hex;
+}
 
-		// extract bits
-		const hash = new Uint8Array(32);
-		dct.forEach((value, i) => {
-			hash[Math.floor(i / 8)] |= (value > median ? 1 : 0) << (i % 8);
-		});
-		return hash;
-	},
-	toHex: (bytes: Uint8Array): string => Array.from(bytes, byte => ("0" + (byte & 0xFF).toString(16)).slice(-2)).reverse().join(""),
-};
+export default {computeDct, toHex};

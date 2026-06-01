@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-const HARNESS = "/tests/e2e/harness.html";
+const HARNESS = "/tests/e2e/pdq-harness.html";
 const ASSETS = "/tests/assets";
 
 test.beforeEach(async ({ page }) => {

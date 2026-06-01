@@ -1,12 +1,11 @@
 import jarosz from "./jarosz-filter";
 import render, { renderHash } from "./render";
 import matrix from "./matrix";
-import hash from "./hash-dct";
+import {computeDct, toHex} from "./hash-dct";
 import luminance from "./luminance";
 import rescale from "./rescale";
 import dct from "./dct";
 import quality from "./quality";
-import distance from "./distance";
 
 export interface PdqConfig {
 	debug?: boolean;
@@ -97,7 +96,7 @@ export const pdqRaw = (data: Uint8ClampedArray<ArrayBufferLike>, width: number, 
 
 		// rotate and flip DCTs
 		.then(buffer => {
-			const dcts: Record<string, number[]> = { original: buffer };
+			const dcts: Record<string, Float32Array> = { original: buffer };
 			if (opts.transform) {
 				dcts.rot90 = matrix.rotate(buffer);
 				dcts.rot180 = matrix.rotate(dcts.rot90);
@@ -121,8 +120,8 @@ export const pdqRaw = (data: Uint8ClampedArray<ArrayBufferLike>, width: number, 
 
 			// generate hashes
 			for (const item in dcts) {
-				const result = hash.computeDct(dcts[item]),
-					hex = hash.toHex(result);
+				const result = computeDct(dcts[item]),
+					hex = toHex(result);
 				hashes.push(hex);
 
 				// debug
@@ -130,7 +129,11 @@ export const pdqRaw = (data: Uint8ClampedArray<ArrayBufferLike>, width: number, 
 					renderHash(result, opts.hashscale);
 				}
 			}
-			return { type: "pdq" as const, hash: opts.transform ? hashes : hashes[0], quality: q };
+			return {
+				type: "pdq" as const,
+				hash: opts.transform ? hashes : hashes[0],
+				quality: q,
+			};
 		});
 }
 
@@ -140,7 +143,7 @@ export const pdqRaw = (data: Uint8ClampedArray<ArrayBufferLike>, width: number, 
  * The process involves several steps: extracting image data, converting it to luminance, applying a Jarosz box blur filter, rescaling the image to a specified block size, calculating the quality of the block, generating a 2D discrete cosine transform (DCT), optionally applying dihedral transformations to the DCT, and finally computing the hash from the DCT values.
  * The resulting hash can be used for comparing images based on their perceptual similarity, while the quality score provides a heuristic measure of the image's detail and sharpness.
  */
-function pdq(canvas: HTMLCanvasElement|OffscreenCanvas, config?: PdqConfig): Promise<PdqResult> {
+export default function pdq(canvas: HTMLCanvasElement|OffscreenCanvas, config?: PdqConfig): Promise<PdqResult> {
 
 	// merge default config
 	const opts = getConfig(config);
@@ -168,9 +171,4 @@ function pdq(canvas: HTMLCanvasElement|OffscreenCanvas, config?: PdqConfig): Pro
 		// Return the image data.
 		success((canvas.getContext("2d") as CanvasRenderingContext2D).getImageData(0, 0, width, height).data);
 	}).then(data => pdqRaw(data, width, height, opts));
-};
-
-export {
-	pdq as default,
-	distance
 };

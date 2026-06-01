@@ -3,11 +3,25 @@ import rescale from "../src/rescale";
 import { makeUniformBlock } from "./helpers";
 
 describe("rescale", () => {
-	it("returns Uint8Array of length block * block", () => {
+	it("returns number[] for number[] input", () => {
 		const data = makeUniformBlock(128, 100);
 		const result = rescale(128, 128, 8, data);
-		expect(result).toBeInstanceOf(Float32Array);
+		expect(Array.isArray(result)).toBe(true);
 		expect(result).toHaveLength(64); // 8 * 8
+	});
+
+	it("returns Float32Array for Float32Array input", () => {
+		const data = new Float32Array(128 * 128).fill(100);
+		const result = rescale(128, 128, 8, data);
+		expect(result).toBeInstanceOf(Float32Array);
+		expect(result).toHaveLength(64);
+	});
+
+	it("returns Uint8ClampedArray for Uint8ClampedArray input", () => {
+		const data = new Uint8ClampedArray(128 * 128).fill(100);
+		const result = rescale(128, 128, 8, data);
+		expect(result).toBeInstanceOf(Uint8ClampedArray);
+		expect(result).toHaveLength(64);
 	});
 
 	it("preserves uniform value", () => {
