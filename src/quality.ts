@@ -8,21 +8,21 @@
 export default (block: number, data: number[] | Float32Array): number => {
 	let gradient = 0;
 
-	// diff left to right
-	for (let i = 0; i < block - 1; i++) {
-		for (let j = 0; j < block; j++) {
-			const u = data[(i * block) + j],
-				v = data[((i + 1) * block) + j],
+	// diff top to bottom
+	for (let y = 0; y < block - 1; y++) {
+		for (let x = 0; x < block; x++) {
+			const u = data[(y * block) + x],
+				v = data[((y + 1) * block) + x],
 				d = Math.trunc(((u - v) * 100) / 255);
 			gradient += Math.abs(d);
 		}
 	}
 
-	// diff top to bottom
-	for (let i = 0; i < block; i++) {
-		for (let j = 0; j < block - 1; j++) {
-			const u = data[(i * block) + j],
-				v = data[(i * block) + j + 1],
+	// diff left to right
+	for (let y = 0; y < block; y++) {
+		for (let x = 0; x < block - 1; x++) {
+			const u = data[(y * block) + x],
+				v = data[(y * block) + x + 1],
 				d = Math.trunc(((u - v) * 100) / 255);
 			gradient += Math.abs(d);
 		}
