@@ -48,9 +48,9 @@ export default class tmk {
 		}
 		const invLen = lenSq > 0 ? 1 / Math.sqrt(lenSq) : 0;
 
-		// Accumulate into the unweighted average
+		// Accumulate into the unweighted average — raw DCT, not L2-normalised
 		for (let k = 0; k < 256; k++) {
-			this.pureAverage[k] += rawDct[k] * invLen;
+			this.pureAverage[k] += rawDct[k];
 		}
 
 		// Accumulate Fourier features for each of the 4 periods
@@ -84,6 +84,21 @@ export default class tmk {
 		}
 
 		this.frameCount++;
+	}
+
+	static merge(partials: Array<{pureAverage: Float32Array; cosFeatures: Float32Array; sinFeatures: Float32Array; frameCount: number}>): tmk {
+		const out = new tmk();
+		for (const p of partials) {
+			for (let k = 0; k < 256; k++) {
+				out.pureAverage[k] += p.pureAverage[k];
+			}
+			for (let k = 0; k < 4 * 32 * 256; k++) {
+				out.cosFeatures[k] += p.cosFeatures[k];
+				out.sinFeatures[k] += p.sinFeatures[k];
+			}
+			out.frameCount += p.frameCount;
+		}
+		return out;
 	}
 
 	compile(): TmkDescriptor {

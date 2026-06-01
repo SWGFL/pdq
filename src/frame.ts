@@ -1,12 +1,12 @@
 
-type ExtractedFrame = { bitmap: ImageBitmap; frameIndex: number };
+type ExtractedFrame = { videoFrame: VideoFrame; frameIndex: number };
 
 const mp4box = "./mp4box.all.js"; // separate variable so it doesn't get inlined
 
 export default function extractVideoFrames(
 	source: ArrayBuffer,
 	fps: number,
-	onFrame: (frame: ExtractedFrame) => void,
+	onframe: (frame: ExtractedFrame) => void,
 	ontotal?: (total: number) => void
 ): Promise<void> {
 	return new Promise((resolve, reject) => {
@@ -19,15 +19,9 @@ export default function extractVideoFrames(
 					samplesReceived = 0,
 					frameIndex = 0,
 					lastIdxAtFps = -1,
-					pendingCopies = 0,
-					decoderFlushed = false,
+					decoded = 0,
 					decoder: VideoDecoder | null = null;
-				const mp4file = createFile(),
-					checkDone = () => {
-						if (decoderFlushed && pendingCopies === 0) {
-							resolve();
-						}
-					};
+				const mp4file = createFile();
 
 				mp4file.onReady = (info: any) => {
 					const videoTrack = info.tracks.find((t: any) => t.video);
@@ -51,20 +45,12 @@ export default function extractVideoFrames(
 								const idxAtFps = Math.round((frame.timestamp / 1_000_000) * fps);
 								if (idxAtFps > lastIdxAtFps) {
 									lastIdxAtFps = idxAtFps;
-									pendingCopies++;
-									// Wrap the VideoFrame without resizing — O(1) in all browsers.
-									// Resize happens inside the worker via drawImage, running in parallel across all workers.
-									createImageBitmap(frame).then(bitmap => {
-										frame.close();
-										onFrame({bitmap, frameIndex: frameIndex++});
-										pendingCopies--;
-										checkDone();
-									}).catch((err: unknown) => {
-										frame.close();
-										reject(err);
-									});
+									onframe({videoFrame: frame, frameIndex: frameIndex++});
 								} else {
 									frame.close();
+								}
+								if (++decoded >= totalSamples) {
+									resolve();
 								}
 							},
 							error: reject,
@@ -95,10 +81,7 @@ export default function extractVideoFrames(
 						samplesReceived++;
 					}
 					if (samplesReceived >= totalSamples) {
-						decoder!.flush().then(() => {
-							decoderFlushed = true;
-							checkDone();
-						});
+						decoder!.flush().then(resolve);
 					}
 				};
 

@@ -1,4 +1,4 @@
-import extractVideoFrames from "./frame";
+import getFrames from "./frame";
 import tmk, {type TmkDescriptor} from "./tmk";
 import vpdq, {type VpdqFeature, type VpdqOptions} from "./vpdq";
 
@@ -7,25 +7,28 @@ export interface VideoConfig {
 	fps?: number;
 	passes?: number;
 	block?: number;
+	rescale?: number;
 	concurrency?: number;
 	onprogress?: (framesProcessed: number, framesTotal: number) => void;
 	tmk?: boolean;
 	vpdq?: VpdqOptions | boolean;
-}
+};
 
 export interface VideoResult {
 	tmk?: TmkDescriptor;
-	vpdq?: VpdqFeature[];
-}
+	vpdq?: string;
+};
 
 // Defaults merged with caller-supplied config
 const defaultConfig = {
 	passes: 2,
 	block: 64,
+	rescale: 512,
+	fps: 15,
 	concurrency: navigator.hardwareConcurrency || 4,
 	tmk:  true,
 	vpdq: true as VpdqOptions | boolean,
-	worker: "pdqf.js",
+	worker: "video-worker.js",
 };
 
 function getConfig(config: VideoConfig) {
@@ -37,115 +40,117 @@ export {vpdq, type VpdqFeature};
 
 // ---- Worker pool ----
 
-type DispatchResult = {pdqf: Float32Array; quality: number | null};
+type FrameResult = {vpdq: {hash: Uint16Array; quality: number | null} | null; rawDct: Float32Array | null};
 
 // Spawn workers and send each one its init message
-function createWorkers(config: ReturnType<typeof getConfig>, computeQuality: boolean): Worker[] {
-	const url = new URL(config.worker, import.meta.url);
+function createWorkers(config: ReturnType<typeof getConfig>): Worker[] {
+	const url = new URL(/* @vite-ignore */ config.worker, import.meta.url);
 	return Array.from({length: config.concurrency}, () => {
 		const worker = new Worker(url, {type: "module"});
 		worker.postMessage({
 			type: "init",
+			rescale: config.rescale,
 			passes: config.passes,
 			block: config.block,
-			computeQuality,
+			fps: config.fps,
+			tmk: config.tmk !== false,
+			vpdq: config.vpdq !== false ? config.vpdq : false
 		});
 		return worker;
 	});
 }
 
-// Send one frame to a worker and resolve with its PDQf result
+// Send one frame to a worker and resolve with the namespaced result
 function dispatchToWorker(
 	worker: Worker,
-	frame: {bitmap: ImageBitmap; frameIndex: number}
-): Promise<DispatchResult> {
-	return new Promise<DispatchResult>(resolve => {
+	frame: {videoFrame: VideoFrame; frameIndex: number}
+): Promise<FrameResult> {
+	return new Promise<FrameResult>(resolve => {
 		const handler = ({data}: MessageEvent) => {
 			worker.removeEventListener("message", handler);
-			resolve({pdqf: new Float32Array(data.pdqf), quality: data.quality});
+			resolve({
+				vpdq: data.vpdq ? {hash: new Uint16Array(data.vpdq.hash), quality: data.vpdq.quality} : null,
+				rawDct: data.rawDct ? new Float32Array(data.rawDct) : null,
+			});
 		};
 		worker.addEventListener("message", handler);
-		worker.postMessage(frame, [frame.bitmap]);
+		worker.postMessage(frame, [frame.videoFrame]);
 	});
 }
 
 // ---- Public API ----
 export default function video(source: ArrayBuffer, config: VideoConfig = {}): Promise<VideoResult> {
 	const opts = getConfig(config),
-		wantTmk  = opts.tmk !== false,
-		wantVpdq = opts.vpdq !== false,
-		fps = opts.fps ?? (wantTmk ? 15 : 1);
+		fps = opts.fps ?? (opts.tmk !== false ? 15 : 1),
+		vpdqAcc = opts.vpdq !== false ? new vpdq(typeof opts.vpdq === "object" ? opts.vpdq : undefined) : null,
+		tmkAcc = opts.tmk !== false ? new tmk() : null;
 
-	// Create workers and accumulators for the requested algorithms
-	const workers = createWorkers(opts, wantVpdq),
-		tmkAcc = wantTmk ? new tmk() : null,
-		vpdqAcc = wantVpdq ? new vpdq(fps, typeof opts.vpdq === "object" ? opts.vpdq : undefined) : null;
+	const workers = createWorkers(opts);
 
-	// return promise to process the video
 	return new Promise<VideoResult>((resolve, reject) => {
-		let frameCount = 0,
+		let index = 0,
 			framesTotal = 0,
-			activeCount = 0,
-			extractDone = false;
+			framesEmitted = 0,
+			decoderDone = false,
+			finalising = false;
 
-		// freeSlots tracks idle worker indices; queue holds frames awaiting dispatch
 		const freeSlots = workers.map((_, i) => i),
-			queue: Array<{bitmap: ImageBitmap; frameIndex: number}> = [],
-			cache = new Map<number, {pdqf: Float32Array; quality: number | null}>();
+			queue: Array<{videoFrame: VideoFrame; frameIndex: number;}> = [],
+			cache = new Map<number, FrameResult>(),
+			checkFinish = () => {
+				if (!finalising && decoderDone && index >= framesEmitted) {
+					finalising = true;
 
-		const tryNext = () => {
-
-			// All stages empty — shut down workers and resolve
-			if (extractDone && activeCount === 0 && queue.length === 0 && cache.size === 0) {
-				for (const worker of workers) {
-					worker.terminate();
+					for (const worker of workers) {
+						worker.terminate();
+					}
+					const out: VideoResult = {};
+					if (tmkAcc !== null) {
+						out.tmk = tmkAcc.compile();
+					}
+					if (vpdqAcc !== null) {
+						out.vpdq = vpdqAcc.compile();
+					}
+					resolve(out);
 				}
-				const out: VideoResult = {};
-				if (wantTmk) {
-					out.tmk = tmkAcc!.compile();
-				}
-				if (wantVpdq) {
-					out.vpdq = vpdqAcc!.compile();
-				}
-				resolve(out);
-
-			// Dispatch queued frames to any idle workers
-			} else {
+			},
+			processFrames = () => {
 				while (queue.length > 0 && freeSlots.length > 0) {
 					const frame = queue.shift()!,
 						slotIdx = freeSlots.pop()!;
-					activeCount++;
-					dispatchToWorker(workers[slotIdx], frame).then(({pdqf, quality}) => {
-						cache.set(frame.frameIndex, {pdqf, quality});
+					dispatchToWorker(workers[slotIdx], frame).then(result => {
+						cache.set(frame.frameIndex, result);
 
-						// Accumulate completed frames in strict index order for deterministic output
-						while (cache.has(frameCount)) {
-							const {pdqf, quality} = cache.get(frameCount)!;
-							cache.delete(frameCount);
-							if (wantTmk) {
-								tmkAcc!.addFrame(pdqf, frameCount);
+						// Accumulate in strict index order for deterministic results
+						while (cache.has(index)) {
+							const {vpdq: v, rawDct} = cache.get(index)!;
+							cache.delete(index);
+							if (vpdqAcc !== null && v !== null && v.quality !== null) {
+								vpdqAcc.addFrame(v.hash, v.quality, index);
 							}
-							vpdqAcc?.addFrame(pdqf, quality!, frameCount);
-							frameCount++;
-							opts.onprogress?.(frameCount, framesTotal);
+							if (tmkAcc !== null && rawDct !== null) {
+								tmkAcc.addFrame(rawDct, index);
+							}
+							opts.onprogress?.(index, framesTotal);
+							index++;
 						}
-						activeCount--;
+
 						freeSlots.push(slotIdx);
-						tryNext();
+						processFrames();
+						checkFinish();
 					}).catch(reject);
 				}
-			}
-		};
+			};
 
-		// Feed extracted frames into the queue and signal completion when done
-		extractVideoFrames(source, fps, frame => {
+		getFrames(source, fps, frame => {
+			framesEmitted++;
 			queue.push(frame);
-			tryNext();
+			processFrames();
 		}, total => {
 			framesTotal = total;
 		}).then(() => {
-			extractDone = true;
-			tryNext();
+			decoderDone = true;
+			checkFinish();
 		}).catch(reject);
 	});
 }

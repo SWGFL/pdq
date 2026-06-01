@@ -1,48 +1,37 @@
 import luminance from "./luminance";
-import rescale from "./rescale";
+import rescalefunc from "./rescale";
 import jarosz from "./jarosz-filter";
 import dct from "./dct";
-import quality from "./quality";
+import qualityFn from "./quality";
 
-const post = (self as unknown as Worker).postMessage.bind(self);
-
-let passes: number,                  // number of Jarosz blur passes
-	block: number,                   // DCT block size (e.g. 64)
-	computeQuality: boolean,         // whether to compute the quality score (vPDQ only)
-	offscreen: OffscreenCanvas | null = null,
+let offscreen: OffscreenCanvas | null = null,
 	ctx: OffscreenCanvasRenderingContext2D | null = null;
 
-self.onmessage = ({data}: MessageEvent) => {
-	if (data.type === "init") {
-		({passes, block, computeQuality} = data);
-	} else {
-		const {bitmap, frameIndex} = data as {bitmap: ImageBitmap; frameIndex: number},
-			scale = Math.min(1, 512 / Math.min(bitmap.width, bitmap.height)),
-			bw = Math.round(bitmap.width * scale),
-			bh = Math.round(bitmap.height * scale);
+export function computePdqf(
+	videoFrame: VideoFrame,
+	rescale: number,
+	passes: number,
+	block: number,
+	computeQuality: boolean
+): {rawDct: Float32Array; quality: number | null} {
+	const scale = Math.min(1, rescale / Math.max(videoFrame.displayWidth, videoFrame.displayHeight)),
+		bw = Math.round(videoFrame.displayWidth * scale),
+		bh = Math.round(videoFrame.displayHeight * scale);
 
-		// Recreate canvas only if dimensions changed (handles multi-resolution sources)
-		if (!offscreen || offscreen.width !== bw || offscreen.height !== bh) {
-			offscreen = new OffscreenCanvas(bw, bh);
-			ctx = offscreen.getContext("2d", {willReadFrequently: true})!;
-			ctx!.imageSmoothingEnabled = false;
-		}
-
-		ctx!.drawImage(bitmap, 0, 0, bw, bh);
-		bitmap.close();
-		const {data: rgba} = ctx!.getImageData(0, 0, bw, bh),
-			luma = luminance(rgba),
-			blurred = jarosz(luma, bw, bh, passes, block),
-			scaled = rescale(bw, bh, block, blurred),
-			rawDct = dct(scaled);
-
-		post(
-			{
-				frameIndex,
-				pdqf: rawDct.buffer,
-				quality: computeQuality ? quality(block, scaled) : null,
-			},
-			[rawDct.buffer]
-		);
+	if (offscreen === null || offscreen.width !== bw || offscreen.height !== bh) {
+		offscreen = new OffscreenCanvas(bw, bh);
+		ctx = offscreen.getContext("2d", {willReadFrequently: true})!;
+		ctx!.imageSmoothingEnabled = false;
 	}
-};
+
+	ctx!.drawImage(videoFrame, 0, 0, bw, bh);
+	videoFrame.close();
+	const {data: rgba} = ctx!.getImageData(0, 0, bw, bh),
+		luma = luminance(rgba),
+		blurred = jarosz(luma, bw, bh, passes, block),
+		scaled = rescalefunc(bw, bh, block, blurred),
+		rawDct = dct(scaled),
+		quality = computeQuality ? qualityFn(block, scaled) : null;
+
+	return {rawDct, quality};
+}

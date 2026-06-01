@@ -1,14 +1,14 @@
-import { n as e, t } from "./hash-dct.js";
-import n from "./distance.js";
+import { n as e } from "./hash-dct.js";
+import t from "./distance.js";
 //#region src/vpdq.ts
-var r = class {
+var n = class {
 	constructor(e, t, n, r) {
 		this.pdqHash = e, this.frameNumber = t, this.quality = n, this.timeStamp = r;
 	}
 	get hex() {
 		return e(this.pdqHash);
 	}
-}, i = {
+}, r = {
 	fps: 1,
 	pruneDistance: 0,
 	qualityTolerance: 50,
@@ -16,27 +16,30 @@ var r = class {
 	queryMatchThreshold: 80,
 	targetMatchThreshold: 0
 };
-function a(e) {
+function i(e) {
 	return {
-		...i,
+		...r,
 		...e
 	};
 }
-var o = class {
+var a = class {
 	constructor(e, t) {
-		this.opts = a(t), this.fps = e, this.interval = Math.max(1, Math.round(e / this.opts.fps)), this.features = [];
+		this.opts = i(t), this.fps = this.opts.fps, this.interval = Math.max(1, Math.round(e / this.opts.fps)), this.features = [];
 	}
-	addFrame(e, i, a) {
-		if (a % this.interval === 0 && i >= this.opts.qualityTolerance) {
-			let o = t(e), s = this.opts.pruneDistance;
-			(s === 0 || this.features.length === 0 || n(o, this.features[this.features.length - 1].pdqHash) > s) && this.features.push(new r(o, a, i, a / this.fps));
+	addFrame(e, r, i) {
+		if (r >= this.opts.qualityTolerance) {
+			let a = this.opts.pruneDistance;
+			(a === 0 || this.features.length === 0 || t(e, this.features[this.features.length - 1].pdqHash) > a) && this.features.push(new n(e, i, r, i / this.fps));
 		}
 	}
+	static includeFrame(e, t) {
+		return e > 0 && t % e === 0;
+	}
 	compile() {
-		return this.features;
+		return JSON.stringify(this.features.map((e) => `${e.hex},${e.quality},${e.timeStamp.toFixed(3)}`));
 	}
 };
 //#endregion
-export { a as n, o as t };
+export { i as n, a as t };
 
 //# sourceMappingURL=vpdq.js.map

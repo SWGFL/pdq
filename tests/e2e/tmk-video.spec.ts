@@ -31,7 +31,7 @@ test.describe("TMK descriptor structure", () => {
 		expect(result.sinFeaturesLength).toBe(4 * 32 * 256);
 	});
 
-	test("pureAverage values are in [-1, 1]", async ({ page }) => {
+	test("pureAverage values are finite raw DCT floats", async ({ page }) => {
 		const { min, max } = await page.evaluate(async (src) => {
 			const buf  = await fetch(src).then(r => r.arrayBuffer()),
 				d    = (await (window as any).__video(buf, {vpdq: false})).tmk,
@@ -39,8 +39,10 @@ test.describe("TMK descriptor structure", () => {
 			return {min: Math.min(...vals), max: Math.max(...vals)};
 		}, `${ASSETS}/doorknob-hd-no-bar.mp4`);
 
-		expect(min).toBeGreaterThanOrEqual(-1.0);
-		expect(max).toBeLessThanOrEqual(1.0);
+		expect(isFinite(min)).toBe(true);
+		expect(isFinite(max)).toBe(true);
+		expect(min).toBeLessThan(0);
+		expect(max).toBeGreaterThan(0);
 	});
 });
 
@@ -79,6 +81,43 @@ test.describe("TMK self-similarity", () => {
 		console.log(`TMK self: level1=${level1.toFixed(4)}  level2=${level2.toFixed(4)}`);
 		expect(level1).toBeCloseTo(1.0, 3);
 		expect(level2).toBeCloseTo(1.0, 2);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// C++ reference comparison
+// ---------------------------------------------------------------------------
+
+test.describe("TMK C++ reference comparison", () => {
+	test("descriptor matches C++ reference within match threshold", async ({ page }) => {
+		const { level1, level2 } = await page.evaluate(async ([src, ref]) => {
+			const [buf, refBuf] = await Promise.all([
+				fetch(src).then(r => r.arrayBuffer()),
+				fetch(ref).then(r => r.arrayBuffer()),
+			]),
+				ours = (await (window as any).__video(buf, {vpdq: false})).tmk;
+
+			// Parse binary .tmk format: 32-byte header, then periods, Fourier coeffs, pureAverage, cos/sin features
+			const view = new DataView(refBuf),
+				P    = view.getInt32(16, true),
+				M    = view.getInt32(20, true),
+				D    = view.getInt32(24, true);
+
+			let offset = 32 + P * 4 + M * 4; // skip header, periods, Fourier coefficients
+			const pureAverage  = new Float32Array(refBuf, offset, D);
+			offset += D * 4;
+			const cosFeatures  = new Float32Array(refBuf, offset, P * M * D);
+			offset += P * M * D * 4;
+			const sinFeatures  = new Float32Array(refBuf, offset, P * M * D);
+
+			const reference = {pureAverage, cosFeatures, sinFeatures, frameCount: 0},
+				cmp = (window as any).__compareTmk(ours, reference);
+			return {level1: cmp.level1, level2: cmp.level2};
+		}, [`${ASSETS}/doorknob-hd-no-bar.mp4`, `${ASSETS}/doorknob-hd-no-bar.tmk`]);
+
+		console.log(`TMK vs C++ reference: level1=${level1.toFixed(4)}  level2=${level2.toFixed(4)}`);
+		expect(level1).toBeGreaterThanOrEqual(0.9);
+		expect(level2).toBeGreaterThanOrEqual(0.7);
 	});
 });
 

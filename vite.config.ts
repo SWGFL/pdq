@@ -12,7 +12,7 @@ export default defineConfig({
 				pdq:          resolve(__dirname, "src/pdq.ts"),
 				distance:     resolve(__dirname, "src/distance.ts"),
 				video:        resolve(__dirname, "src/video.ts"),
-				pdqf:         resolve(__dirname, "src/pdqf.ts"),
+				"video-worker": resolve(__dirname, "src/video-worker.ts"),
 				"tmk-compare":  resolve(__dirname, "src/tmk-compare.ts"),
 				"vpdq-compare": resolve(__dirname, "src/vpdq-compare.ts"),
 			},

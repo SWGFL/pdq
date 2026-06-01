@@ -1,5 +1,5 @@
 import distance from "./distance";
-import {computeDct, toHex} from "./hash-dct";
+import {toHex} from "./hash-dct";
 
 export class VpdqFeature {
 	pdqHash: Uint16Array;
@@ -45,28 +45,29 @@ export function getConfig(opts?: VpdqOptions) {
 export default class Vpdq {
 	private features: VpdqFeature[];
 	private fps: number;
-	private interval: number;  // pipeline frames to skip between vPDQ samples
 	private opts: ReturnType<typeof getConfig>;
 
-	constructor(extractFps: number, opts?: VpdqOptions) {
+	constructor(opts?: VpdqOptions) {
 		this.opts = getConfig(opts);
-		this.fps = extractFps;
-		this.interval = Math.max(1, Math.round(extractFps / this.opts.fps));
+		this.fps = this.opts.fps;
 		this.features = [];
 	}
 
-	addFrame(pdqf: Float32Array, quality: number, frameIndex: number): void {
-		if (frameIndex % this.interval === 0 && quality >= this.opts.qualityTolerance) {
-			const hash = computeDct(pdqf),
-				pd = this.opts.pruneDistance;
-			if (pd === 0 || this.features.length === 0
-				|| distance(hash, this.features[this.features.length - 1].pdqHash) > pd) {
-				this.features.push(new VpdqFeature(hash, frameIndex, quality, frameIndex / this.fps));
+	addFrame(pdqHash: Uint16Array, quality: number, frameIndex: number): void {
+		if (quality >= this.opts.qualityTolerance) {
+			const pd = this.opts.pruneDistance;
+			if (pd === 0 || this.features.length === 0 || distance(pdqHash, this.features[this.features.length - 1].pdqHash) > pd) {
+				this.features.push(new VpdqFeature(pdqHash, frameIndex, quality, frameIndex / this.fps));
 			}
 		}
 	}
 
-	compile(): VpdqFeature[] {
-		return this.features;
+	static includeFrame(inputfps: number, fps: number, frameIndex: number): boolean {
+		const interval = Math.max(1, Math.round(inputfps / fps));
+		return interval > 0 && frameIndex % interval === 0;
+	}
+
+	compile(): string {
+		return JSON.stringify(this.features.map(f => `${f.hex},${f.quality},${f.timeStamp.toFixed(3)}`));
 	}
 }

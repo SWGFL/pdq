@@ -46,7 +46,7 @@ function n(e, t) {
 		for (let n = 0; n < 256; n++) e[t + n] *= r;
 	}
 }
-var r = class {
+var r = class r {
 	constructor() {
 		this.pureAverage = new Float32Array(256), this.cosFeatures = new Float32Array(128 * 256), this.sinFeatures = new Float32Array(128 * 256), this.frameCount = 0;
 	}
@@ -54,7 +54,7 @@ var r = class {
 		let r = 0;
 		for (let t = 0; t < 256; t++) r += e[t] * e[t];
 		let i = r > 0 ? 1 / Math.sqrt(r) : 0;
-		for (let t = 0; t < 256; t++) this.pureAverage[t] += e[t] * i;
+		for (let t = 0; t < 256; t++) this.pureAverage[t] += e[t];
 		for (let r = 0; r < 4; r++) {
 			let a = t[r], o = r * 32 * 256;
 			for (let t = 0; t < 256; t++) this.cosFeatures[o + t] += e[t] * i;
@@ -67,6 +67,15 @@ var r = class {
 			}
 		}
 		this.frameCount++;
+	}
+	static merge(e) {
+		let t = new r();
+		for (let n of e) {
+			for (let e = 0; e < 256; e++) t.pureAverage[e] += n.pureAverage[e];
+			for (let e = 0; e < 128 * 256; e++) t.cosFeatures[e] += n.cosFeatures[e], t.sinFeatures[e] += n.sinFeatures[e];
+			t.frameCount += n.frameCount;
+		}
+		return t;
 	}
 	compile() {
 		let t = 1 / this.frameCount;

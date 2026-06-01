@@ -24,7 +24,7 @@ var r = (e, r, i, a, o) => {
 	g: .587,
 	b: .114
 }, a = (e) => {
-	let t = new Uint8ClampedArray(e.length / 4);
+	let t = new Float32Array(e.length / 4);
 	for (let n = 0; n < e.length; n += 4) t[n / 4] = i.r * e[n] + i.g * e[n + 1] + i.b * e[n + 2];
 	return t;
 };
